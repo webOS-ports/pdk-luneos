@@ -4,24 +4,24 @@ The `yocto/` directory in this repository is a complete BitBake layer
 (`meta-pdk`). Adding it to a LuneOS build produces `/opt/pdk` in the image —
 sysroot, shims and launcher — instead of hand-copying files to a device.
 
-> **Status: verified as far as configuration, not yet compiled.**
+> **Status: builds.** Verified against a real LuneOS scarthgap tree,
+> `MACHINE=tissot-halium`:
 >
-> What has been checked, against scarthgap in a scratch build directory:
+> * `bitbake -n luneos-image` — exit 0, no errors, 14612 tasks planned
+> * `bitbake mc:pdk-armel:pdk-sysroot-image` — builds, 42 MB `tar.xz`
+> * `bitbake packagegroup-luneos-pdk` — builds; `/opt/pdk/sysroot` is 141 MB
+>   unpacked, a 58 MB ipk, plus `/opt/pdk/pdk-run`
+> * every shim in the image reports `0x5000200, Version5 EABI, soft-float ABI`
+> * `libSDL-1.2.so.0` carries `SONAME libSDL-1.2.so.0` and
+>   `NEEDED libSDL12compat.so.0` — the soname swap works as designed
+> * `swrast_dri.so` (llvmpipe), `msm_dri.so` and `kgsl_dri.so` (freedreno) are
+>   all present
 >
-> * the layer parses clean — `bitbake -p`, 0 errors, with the multiconfig enabled
-> * the tune resolves correctly: `TARGET_FPU="softfp"`,
->   `TARGET_SYS="arm-oe-linux-gnueabi"`, `TUNE_CCARGS` containing
->   `-mfloat-abi=softfp` — this is the load-bearing claim and BitBake confirms it
-> * `pdk-sysroot-image`'s dependency graph resolves fully in the `pdk-armel`
->   multiconfig
-> * the cross-multiconfig dependency registers:
->   `mcdepends: {do_install: mc::pdk-armel:pdk-sysroot-image:do_image_complete}`
->
-> What has **not** been run: an actual compile. No `bitbake luneos-image` and no
-> `bitbake mc:pdk-armel:pdk-sysroot-image` has been taken through to a built
-> artefact, so expect the usual first-build friction from mode 1. The prebuilt
-> path (mode 2) is the configuration the 81 % compatibility figure was measured
-> against and does not depend on any of this compiling.
+> What has **not** been done: run a game against a Yocto-built sysroot. The
+> artefacts are correct by inspection; nobody has launched anything with them.
+> Expect the `xdg_wm_base` problem below to bite on a device. The prebuilt path
+> (mode 2) remains the configuration the 81 % compatibility figure was measured
+> against.
 
 ## The problem this has to solve
 
