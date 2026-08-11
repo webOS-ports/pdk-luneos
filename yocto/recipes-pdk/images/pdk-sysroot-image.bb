@@ -10,7 +10,7 @@ LICENSE = "MIT"
 # No kernel, no init, no package manager, no login.
 IMAGE_FEATURES = ""
 IMAGE_LINGUAS = ""
-IMAGE_FSTYPES = "tar.bz2"
+IMAGE_FSTYPES = "tar.xz"
 NO_RECOMMENDATIONS = "1"
 
 inherit image

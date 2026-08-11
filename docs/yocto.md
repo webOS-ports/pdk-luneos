@@ -34,7 +34,7 @@ configuration, with its own `TMPDIR` and its own tune, builds the soft-float tre
 from the same recipes; the main build consumes the result through `mcdepends`.
 
 ```
-mc:pdk-armel   ──build──▶  pdk-sysroot-image (tar.bz2, ARM softfp)
+mc:pdk-armel   ──build──▶  pdk-sysroot-image (tar.xz, ARM softfp)
                                    │
                                    │ mcdepends
                                    ▼
@@ -123,7 +123,7 @@ redistributable and are not built from source by anyone.
 ### Mode 2 — a tarball from `tools/mk-sysroot.sh`
 
 ```
-PDK_SYSROOT_TARBALL = "file:///srv/pdk/pdk-sysroot.tar.bz2"
+PDK_SYSROOT_TARBALL = "file:///srv/pdk/pdk-sysroot.tar.xz"
 PDK_SYSROOT_TARBALL_SHA256 = "..."
 ```
 

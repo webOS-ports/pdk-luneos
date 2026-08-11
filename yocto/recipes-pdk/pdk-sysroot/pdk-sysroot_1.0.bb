@@ -24,7 +24,7 @@ PDK_PREFIX = "/opt/pdk"
 # conf/multiconfig/pdk-armel.conf.
 PDK_ARMEL_TMPDIR ?= "${TOPDIR}/tmp-pdk-armel"
 PDK_ARMEL_MACHINE ?= "pdk-armel"
-PDK_ARMEL_ROOTFS ?= "${PDK_ARMEL_TMPDIR}/deploy/images/${PDK_ARMEL_MACHINE}/pdk-sysroot-image-${PDK_ARMEL_MACHINE}.rootfs.tar.bz2"
+PDK_ARMEL_ROOTFS ?= "${PDK_ARMEL_TMPDIR}/deploy/images/${PDK_ARMEL_MACHINE}/pdk-sysroot-image-${PDK_ARMEL_MACHINE}.rootfs.tar.xz"
 
 # --- mode 2: consume a tarball built outside BitBake by tools/mk-sysroot.sh
 #
@@ -33,7 +33,7 @@ PDK_ARMEL_ROOTFS ?= "${PDK_ARMEL_TMPDIR}/deploy/images/${PDK_ARMEL_MACHINE}/pdk-
 # was measured against, and it is the only way to get the legacy libraries that
 # some titles need but that cannot be built or redistributed.
 #
-#     PDK_SYSROOT_TARBALL = "file:///srv/pdk/pdk-sysroot.tar.bz2"
+#     PDK_SYSROOT_TARBALL = "file:///srv/pdk/pdk-sysroot.tar.xz"
 #
 PDK_SYSROOT_TARBALL ?= ""
 
@@ -61,7 +61,7 @@ do_install() {
             bbfatal "pdk-sysroot: ${PDK_ARMEL_ROOTFS} not found.\n\
 Is BBMULTICONFIG = \"pdk-armel\" set in conf/local.conf? See docs/yocto.md."
         fi
-        tar -xjf ${PDK_ARMEL_ROOTFS} -C ${D}${PDK_PREFIX}/sysroot
+        tar -xJf ${PDK_ARMEL_ROOTFS} -C ${D}${PDK_PREFIX}/sysroot
     fi
 
     # Nothing in the guest tree should carry setuid bits into the host image - it
