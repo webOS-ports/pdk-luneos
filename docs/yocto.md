@@ -68,7 +68,7 @@ Either way, in `conf/local.conf`:
 
 ```
 BBMULTICONFIG = "pdk-armel"
-DISTRO_FEATURES:append = " pdk"
+PDK_QEMU_USERMODE_ONLY = "1"
 IMAGE_INSTALL:append = " packagegroup-luneos-pdk"
 ```
 
@@ -85,9 +85,14 @@ build just that part:
 bitbake mc:pdk-armel:pdk-sysroot-image
 ```
 
-The `pdk` distro feature is only read by `qemu_%.bbappend`, which narrows target
-qemu to `arm-linux-user` and drops SDL, KVM, Xen and virgl. Without the feature
-the layer changes nothing about anyone else's qemu.
+`PDK_QEMU_USERMODE_ONLY` is read only by `qemu_%.bbappend`, which narrows target
+qemu to `arm-linux-user` and drops SDL, KVM, Xen and virgl. Left unset, the layer
+changes nothing about anyone else's qemu.
+
+It is a private variable rather than a `DISTRO_FEATURE` on purpose.
+`DISTRO_FEATURES` is part of the task signature of a large share of recipes, so
+adding one to an existing build invalidates sstate broadly and triggers a big
+rebuild — a steep price for configuring a single recipe.
 
 ## What each recipe does
 
@@ -102,7 +107,7 @@ the layer changes nothing about anyone else's qemu.
 | `pdk-sysroot-fonts` | the font filenames twelve titles open by absolute path |
 | `pdk-tools` | `pdk-run` and `install-games.sh` |
 | `packagegroup-luneos-pdk` | the lot, plus `luna-send` and a PulseAudio server |
-| `qemu_%.bbappend` | trims target qemu, only when `pdk` is in `DISTRO_FEATURES` |
+| `qemu_%.bbappend` | trims target qemu, only when `PDK_QEMU_USERMODE_ONLY = "1"` |
 
 ## Two modes for the sysroot
 

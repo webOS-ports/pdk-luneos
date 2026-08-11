@@ -4,18 +4,24 @@
 # drags in a full qemu built for fifteen architectures with SDL, KVM and virgl.
 # The only thing PDK applications need is user-mode ARM emulation.
 #
-# Conditional on the 'pdk' DISTRO_FEATURE, so merely having this layer present
-# does not change anyone else's qemu. Enable with:
+# Opt in from conf/local.conf:
 #
-#     DISTRO_FEATURES:append = " pdk"
+#     PDK_QEMU_USERMODE_ONLY = "1"
+#
+# Deliberately NOT keyed on a DISTRO_FEATURE. DISTRO_FEATURES is part of the task
+# signature of a large share of recipes, so adding one to an existing build
+# invalidates sstate broadly and triggers a big rebuild for what is, here, a
+# single recipe's configuration. A private variable costs nobody anything.
 #
 # Done in an anonymous python function rather than with inline expansion so that
-# when the feature is off, QEMU_TARGETS and PACKAGECONFIG are left entirely alone
-# - a bbappend that restates oe-core's default list would silently go stale the
-# next time upstream changes it.
+# when the option is off, QEMU_TARGETS and PACKAGECONFIG are left entirely alone -
+# a bbappend that restated oe-core's default QEMU_TARGETS list as its fallback
+# would silently go stale the next time upstream changed it.
+
+PDK_QEMU_USERMODE_ONLY ??= "0"
 
 python () {
-    if not bb.utils.contains('DISTRO_FEATURES', 'pdk', True, False, d):
+    if d.getVar('PDK_QEMU_USERMODE_ONLY') != '1':
         return
 
     d.setVar('QEMU_TARGETS', 'arm')
