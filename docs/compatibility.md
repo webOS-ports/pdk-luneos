@@ -57,9 +57,11 @@ That result is worth more than any individual game working: it means no title
 fails merely because an entry point is absent. Whatever remains is behaviour, not
 linkage.
 
-Library coverage is likewise complete. Scanning every `NEEDED` entry across all
-583 binaries, the only unsatisfied ones belong to a single title that links the
-**PowerVR SGX driver** directly — as dead an end as the Adreno blob.
+Library coverage is near-complete. Scanning every `NEEDED` entry across all 610
+native titles — main binary **and** bundled `.so` files — 10 titles reference a
+soname that is not present. One is the **PowerVR SGX driver**, as dead an end as
+the Adreno blob; the rest are ordinary open-source packages, itemised in
+[reverse-engineering.md](reverse-engineering.md#how-much-proprietary-code-is-actually-load-bearing).
 
 ## The fixes, ranked by titles recovered
 
@@ -105,6 +107,13 @@ with a capital PDL. Without them the loader gives up before the app runs.
 Twelve apps crashed at the same address inside `libSDL_ttf` because they hardcode
 `/usr/share/fonts/PreludeCondensed-Medium.ttf` and never check `TTF_OpenFont` for
 NULL.
+
+LuneOS turns out to ship **the entire Prelude family already**, via
+`luna-init-fonts` — all 34 faces the legacy image had. The only fonts the legacy
+image carried that LuneOS does not are the Microsoft core fonts (Arial, Courier
+New, Georgia, Times New Roman, Verdana, Lucida Console) and four CJK faces, which
+Palm licensed. Liberation is metric-compatible with the first three, so text laid
+out for Arial still fits.
 
 Two related dead ends, both reverted: swapping in Debian's `SDL_mixer` made NME
 strictly worse (`Null Function Pointer`), and swapping `SDL_ttf` was unnecessary —

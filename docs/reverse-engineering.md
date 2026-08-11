@@ -32,6 +32,43 @@ not in the open-source drop. (`libsdl-image`, `libsdl-mixer`, `libsdl-net` and
 So for the SDL and PDL surfaces there was no source to read, and behaviour had to
 come from the binaries.
 
+## How much proprietary code is actually load-bearing
+
+Measured, not estimated: `readelf -d` over all **610 native titles** in the
+catalogue — each title's main binary plus any `.so` it bundles — tallying which
+Palm-proprietary sonames appear in `NEEDED`.
+
+| library | titles | |
+|---|---|---|
+| `libSDL_cinema.so` | **108 (17.7 %)** | already replaced by `src/sdl_cinema_stub.c` |
+| `libnapp.so` | 1 | all four are the same title — `com.ea.app.sudoku` |
+| `libPiranha.so` | 1 | " |
+| `libhid.so` | 1 | " |
+| `libpalmvibe.so` | 1 | " |
+| `libhelpers.so`, `libhelpers-ex.so`, `libLunaKeymaps.so`, `libhal.so`, `libWebOsProxy.so`, `libdlmalloc.so`, `libaffinity.so.0`, `libgoodfork.so.0` | **0** | dropped from the overlay |
+
+So the entire proprietary surface is **one library, already stubbed, plus a single
+EA title.** That is a much better position than the size of the overlay suggests,
+and it was worth measuring rather than assuming — eight libraries were being
+copied out of a device image for no reason at all.
+
+Encumbered codecs are a similarly small tail: `libavcodec.so.52` (3 titles),
+`libamrnb.so.3`, `libavformat.so.52`, `libavutil.so.50` (1 each), and
+`libfaac.so.0` — the one genuinely non-free item — **0 titles**.
+
+Counting what is *absent from the sysroot today* rather than what is proprietary,
+only **10 of 610 titles (1.6 %)** reference a soname that is not present, and
+most of those gaps are ordinary open-source packages:
+
+| gap | titles | |
+|---|---|---|
+| ffmpeg 0.8 series (`libavcodec.so.53` et al.) | 5 | LGPL; needs an old build, not a licence |
+| `libpng.so.3` | 5 | the same library as `libpng12.so.0` under libpng 1.2's other soname — now symlinked |
+| gupnp / gssdp | 2 | not in bookworm armel |
+| `libdx.so`, `libprojectM.so` | 2 | projectM is in Debian and is now installed |
+| PowerVR SGX blobs | 1 | as dead an end as the Adreno blob |
+| `libcairo2`, `libfontconfig1`, `libexpat.so.0`, `libiconv.so.2` | 1 each | now installed or symlinked |
+
 ## Method
 
 Both `libpdl.so` and `libnapp.so` in the 3.0.5 image are **unstripped**, which made
@@ -106,8 +143,10 @@ catalogue rather than from decompiling anything. For each of 583 main binaries:
 
 * extract undefined symbols, diff against what this stack exports → 593 distinct
   symbols wanted, 14 missing, all now implemented
-* extract every `NEEDED` entry, check each resolves in the sysroot → complete
-  except one title linking the PowerVR SGX driver
+* extract every `NEEDED` entry, check each resolves in the sysroot → 10 of 610
+  titles reference something absent, itemised above. An earlier pass over main
+  binaries only reported this as "complete except one PowerVR title"; including
+  each package's bundled `.so` files is what surfaced the other nine
 * count callers of specific APIs, which is how the accelerometer fix was
   prioritised: 296 titles call `SDL_JoystickOpen`, 213 read its axes
 

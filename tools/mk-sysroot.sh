@@ -42,23 +42,44 @@ libasound2 libpulse0 libsamplerate0 libxcursor1 libxi6 libxrandr2 libxss1
 libxkbcommon0 libdecor-0-0 libxrender1 libsndfile1 libasyncns0 libapparmor1
 libflac12 libvorbis0a libvorbisenc2 libogg0 libopus0 libmpg123-0 libmp3lame0
 libdbus-1-3 libsystemd0 libgcrypt20 libgpg-error0 liblz4-1 libcap2 libxml2 libicu72
+libcairo2 libpixman-1-0 libfontconfig1 libfreetype6 libprojectm3 libgupnp-av-1.0-3
 "
 
-# Palm libraries with no modern substitute. Deliberately excluded:
+# Palm libraries with no modern substitute.
+#
+# A readelf -d sweep over all 610 native titles (main binary plus any bundled
+# .so) says how much of this is actually load-bearing:
+#
+#   libSDL_cinema.so   108 titles (17.7%)  <- replaced by src/sdl_cinema_stub.c
+#   libnapp.so           1               \
+#   libPiranha.so        1                | all four are com.ea.app.sudoku,
+#   libhid.so            1                | and only that title
+#   libpalmvibe.so       1               /
+#   libhelpers*, libLunaKeymaps, libhal, libWebOsProxy, libdlmalloc,
+#   libaffinity, libgoodfork                      0 titles - dropped below
+#
+# So the proprietary surface is one library that is already stubbed, plus a
+# single EA title. The rest of this list is open source that Palm merely
+# happened to build; it stays only because the old sonames are convenient.
+#
+# Deliberately excluded:
 #   libc/libm/libpthread/libdl/librt/ld-linux  - Debian's glibc 2.36 supersedes them
 #   libEGL/libGLESv2/libGLES_CM/libPiranha-GL  - replaced by Mesa (the originals are
 #                                                the Qualcomm Adreno blob and need
 #                                                /dev/kgsl-3d0 from the 2011 kernel)
 #   libstdc++/libgcc_s                         - Debian's carry the old symbol versions
 #   libSDL-1.2, libpdl                         - replaced by our own builds
+#   libSDL_cinema                              - replaced by src/sdl_cinema_stub.c
+#                                                (108 titles; the real one needs the
+#                                                 webOS media service via libmedia-api)
 LEGACY_LIBS="
 libSDL_image-1.2.so.0.1.6 libSDL_mixer-1.2.so.0.10.1 libSDL_ttf-2.0.so.0.10.0
-libSDL_net-1.2.so.0.0.7 libSDL_cinema.so
-libnapp.so libPiranha.so libhelpers.so libhelpers-ex.so
-libLunaSysMgrIpc.so liblunaservice.so libluna-prefs.so libLunaKeymaps.so
-libPmLogLib.so libdlmalloc.so libaffinity.so.0 libgoodfork.so.0
+libSDL_net-1.2.so.0.0.7
+libnapp.so libPiranha.so libhid.so
+libLunaSysMgrIpc.so liblunaservice.so libluna-prefs.so
+libPmLogLib.so libPmIpcLib.so
 libcjson.so libmjson.so libpbnjson_c.so libpbnjson_cpp.so libyajl.so.1
-libhal.so libhid.so libWebOsProxy.so libcares.so.2
+libcares.so.2
 libssl.so.0.9.8 libcrypto.so.0.9.8 libsqlite3.so.0 libcurl.so.4
 libglib-2.0.so.0 libgthread-2.0.so.0 libgobject-2.0.so.0 libgmodule-2.0.so.0
 libjpeg.so.62 libpng12.so.0 libfreetype.so.6
@@ -170,6 +191,18 @@ if [ -e "$LEGACY/lib/libamrnbcodec.so" ]; then
     ( cd "$SYSROOT/usr/lib" && ln -sf libamrnbcodec.so libamrnb.so.3 )
     echo "  libamrnb.so.3 -> libamrnbcodec.so"
 fi
+
+# Sonames that were retired upstream but which some titles still link. Each is
+# the *same* library under an older name, not a different ABI:
+#   libpng.so.3   - libpng 1.2 shipped both this and libpng12.so.0   (5 titles)
+#   libexpat.so.0 - expat's public API is unchanged across the bump  (1 title)
+say "old-soname compatibility links"
+( cd "$SYSROOT/usr/lib"
+  [ -e libpng12.so.0 ] && ln -sf libpng12.so.0 libpng.so.3 && echo "  libpng.so.3 -> libpng12.so.0"
+  for e in libexpat.so.1*; do
+      [ -e "$e" ] && ln -sf "$e" libexpat.so.0 && echo "  libexpat.so.0 -> $e" && break
+  done
+) 2>/dev/null
 
 say "installing webOS system fonts"
 if [ -d "$LEGACY/usr/share/fonts" ]; then
