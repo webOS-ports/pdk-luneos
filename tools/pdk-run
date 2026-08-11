@@ -1,0 +1,98 @@
+#!/bin/sh
+# pdk-run - launch a legacy webOS PDK game on LuneOS.
+#
+#   pdk-run <app-dir> <main-binary-relative-to-app-dir> [args...]
+#
+# Installed apps call this from their pdk-launch wrapper. Everything the games
+# need that differs from a normal native app is set here.
+
+PDK=${PDK_PREFIX:-/opt/pdk}
+SYSROOT=${PDK_SYSROOT:-$PDK/sysroot}
+APPDIR="$1"
+BIN="$2"
+shift 2 2>/dev/null || true   # anything left is for the game itself
+
+[ -n "$APPDIR" ] && [ -n "$BIN" ] || { echo "usage: pdk-run <appdir> <binary>" >&2; exit 2; }
+
+# Per-app quirks. Engines differ enough (resize handling, screen size, GLES
+# level) that a few titles need overrides; install-games.sh writes these.
+# set -a so plain KEY=value lines become exported - qemu only forwards the
+# real environment, so an unexported shell variable never reaches the game.
+[ -f "$APPDIR/pdk.env" ] && { set -a; . "$APPDIR/pdk.env"; set +a; }
+
+# Retail titles open absolute paths into their own package (FIFA wants
+# /vfs/data.vfs) because webOS ran PDK apps chrooted with the app dir as /.
+# One game runs at a time, so a symlink is enough to emulate that.
+[ -d "$APPDIR/vfs" ] && ln -sfn "$APPDIR/vfs" /vfs
+
+# Run from the binary's own directory - games load assets relative to cwd.
+BINDIR=$(dirname "$BIN")
+BINNAME=$(basename "$BIN")
+if [ "$BINDIR" != "." ]; then cd "$APPDIR/$BINDIR" || exit 1; else cd "$APPDIR" || exit 1; fi
+
+# Screen size. Most titles ask for 0x0 ("native") and the SDL shim resolves it;
+# a few insist on their own. Override per app with PDK_SCREEN_* in the environment.
+: "${PDK_SCREEN_WIDTH:=1024}"
+: "${PDK_SCREEN_HEIGHT:=768}"
+
+# llvmpipe spawns one thread per core and its synchronisation is expensive under
+# emulation - more threads than this actively slows things down.
+: "${LP_NUM_THREADS:=4}"
+
+LIBPATH="/lib:/usr/lib:$APPDIR:$APPDIR/$BINDIR"
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+export PULSE_SERVER="${PULSE_SERVER:-unix:/var/run/pulse/native}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+export LP_NUM_THREADS PDK_SCREEN_WIDTH PDK_SCREEN_HEIGHT
+
+if [ -n "$PDK_DEBUG" ]; then
+    export PDK_SHIM_DEBUG=1 PDL_DEBUG=1 PDK_CINEMA_DEBUG=1 PDK_GLES_DEBUG=1
+fi
+
+# qemu writes a ~1GB core dump per crash into the app directory; on a device that
+# fills the filesystem long before it helps anyone.
+ulimit -c 0 2>/dev/null || true
+
+# --- how to execute the guest binary ---------------------------------------
+#
+# On ARMv7 no emulator is involved. softfp and hardfp are the same instruction
+# set - they differ only in whether float arguments travel in VFP registers - so
+# the CPU runs these binaries natively. All that is needed is to point them at
+# the soft-float sysroot, which means invoking its loader explicitly rather than
+# the system one.
+#
+# Everywhere else (x86-64 emulator, arm64 devices without ARM32 userspace) the
+# whole guest runs under qemu-user.
+
+find_qemu() {
+    for q in "$PDK/qemu-arm" "$PDK/qemu-arm-static" \
+             /usr/bin/qemu-arm /usr/bin/qemu-arm-static; do
+        [ -x "$q" ] && { echo "$q"; return 0; }
+    done
+    return 1
+}
+
+case "$(uname -m)" in
+  armv7*|armv8l)
+    LOADER=$(ls "$SYSROOT"/lib/ld-linux.so.3 "$SYSROOT"/lib/ld-linux-armhf.so.3 2>/dev/null | head -1)
+    if [ -n "$LOADER" ]; then
+        export LD_LIBRARY_PATH="$SYSROOT/lib:$SYSROOT/usr/lib:$APPDIR:$APPDIR/$BINDIR"
+        [ -n "$PDK_PRELOAD" ] && export LD_PRELOAD="$PDK_PRELOAD"
+        exec "$LOADER" --library-path "$LD_LIBRARY_PATH" "./$BINNAME" "$@"
+    fi
+    echo "pdk-run: no loader in $SYSROOT, falling back to emulation" >&2
+    ;;
+esac
+
+QEMU=$(find_qemu) || {
+    echo "pdk-run: no qemu-arm found and this is not an ARMv7 host" >&2
+    exit 1
+}
+
+exec "$QEMU" -L "$SYSROOT" \
+    -E LD_LIBRARY_PATH="$LIBPATH" \
+    ${PDK_PRELOAD:+-E LD_PRELOAD=$PDK_PRELOAD} \
+    "./$BINNAME" "$@"
