@@ -69,8 +69,22 @@ Either way, in `conf/local.conf`:
 ```
 BBMULTICONFIG = "pdk-armel"
 PDK_QEMU_USERMODE_ONLY = "1"
-IMAGE_INSTALL:append = " packagegroup-luneos-pdk"
+IMAGE_INSTALL:append:pn-luneos-image = " packagegroup-luneos-pdk"
+IMAGE_INSTALL:append:pn-luneos-dev-image = " packagegroup-luneos-pdk"
 ```
+
+**Scope that append with `:pn-`.** A bare `IMAGE_INSTALL:append` is global: it
+lands on *every* image in the build, including the initramfs, which is how
+141 MB of `/opt/pdk` ends up somewhere it very much should not be —
+
+```
+The initramfs size 652101(K) exceeds INITRAMFS_MAXSIZE: 131072(K)
+```
+
+— and on `pdk-sysroot-image` itself, which would then try to install the
+LuneOS-side packagegroup into the soft-float guest tree. The multiconfig
+defends against the second case with `IMAGE_INSTALL:remove`; nothing defends
+against the first but naming the images you mean.
 
 Then build normally:
 
