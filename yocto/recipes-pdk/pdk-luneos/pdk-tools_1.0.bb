@@ -11,7 +11,7 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=89aea4e17d99a7cacdbeed46a0096b10"
 # parses standalone without meta-webos-ports present.
 PDK_GIT_REPO ?= "git://github.com/webOS-ports/pdk-luneos.git"
 SRC_URI = "${PDK_GIT_REPO};protocol=https;branch=main"
-SRCREV = "${AUTOREV}"
+SRCREV = "3f25d726192ddc04643cdcbf6c2b581b4170f023"
 S = "${WORKDIR}/git"
 
 PV = "1.0.0+git"

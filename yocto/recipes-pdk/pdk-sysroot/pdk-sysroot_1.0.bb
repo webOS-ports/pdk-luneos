@@ -24,7 +24,7 @@ PDK_PREFIX = "/opt/pdk"
 # conf/multiconfig/pdk-armel.conf.
 PDK_ARMEL_TMPDIR ?= "${TOPDIR}/tmp-pdk-armel"
 PDK_ARMEL_MACHINE ?= "pdk-armel"
-PDK_ARMEL_ROOTFS ?= "${PDK_ARMEL_TMPDIR}/deploy/images/${PDK_ARMEL_MACHINE}/pdk-sysroot-image-${PDK_ARMEL_MACHINE}.tar.bz2"
+PDK_ARMEL_ROOTFS ?= "${PDK_ARMEL_TMPDIR}/deploy/images/${PDK_ARMEL_MACHINE}/pdk-sysroot-image-${PDK_ARMEL_MACHINE}.rootfs.tar.bz2"
 
 # --- mode 2: consume a tarball built outside BitBake by tools/mk-sysroot.sh
 #

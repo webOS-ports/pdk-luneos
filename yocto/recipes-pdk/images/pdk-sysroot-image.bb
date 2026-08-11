@@ -65,7 +65,8 @@ PDK_SYSROOT_MEDIA = " \
     libogg \
     flac \
     alsa-lib \
-    pulseaudio-client \
+    libpulse \
+    libpulse-simple \
 "
 
 PDK_SYSROOT_SHIMS = "pdk-luneos"

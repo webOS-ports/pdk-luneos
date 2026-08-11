@@ -4,11 +4,24 @@ The `yocto/` directory in this repository is a complete BitBake layer
 (`meta-pdk`). Adding it to a LuneOS build produces `/opt/pdk` in the image —
 sysroot, shims and launcher — instead of hand-copying files to a device.
 
-> **Status: authored, not yet build-verified end to end.** The recipes are written
-> against scarthgap and the layer parses, but a full `bitbake luneos-image` with
-> the multiconfig enabled has not been run. Treat the from-source path
-> (mode 1 below) as needing a first shakedown build; the prebuilt path (mode 2) is
-> the configuration the 81 % compatibility figure was actually measured against.
+> **Status: verified as far as configuration, not yet compiled.**
+>
+> What has been checked, against scarthgap in a scratch build directory:
+>
+> * the layer parses clean — `bitbake -p`, 0 errors, with the multiconfig enabled
+> * the tune resolves correctly: `TARGET_FPU="softfp"`,
+>   `TARGET_SYS="arm-oe-linux-gnueabi"`, `TUNE_CCARGS` containing
+>   `-mfloat-abi=softfp` — this is the load-bearing claim and BitBake confirms it
+> * `pdk-sysroot-image`'s dependency graph resolves fully in the `pdk-armel`
+>   multiconfig
+> * the cross-multiconfig dependency registers:
+>   `mcdepends: {do_install: mc::pdk-armel:pdk-sysroot-image:do_image_complete}`
+>
+> What has **not** been run: an actual compile. No `bitbake luneos-image` and no
+> `bitbake mc:pdk-armel:pdk-sysroot-image` has been taken through to a built
+> artefact, so expect the usual first-build friction from mode 1. The prebuilt
+> path (mode 2) is the configuration the 81 % compatibility figure was measured
+> against and does not depend on any of this compiling.
 
 ## The problem this has to solve
 
