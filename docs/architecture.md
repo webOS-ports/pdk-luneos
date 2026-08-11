@@ -3,7 +3,7 @@
 ## The problem
 
 A legacy webOS PDK application is an ARMv7 ELF with `Flags 0x5000002` — EABI5,
-**soft-float ABI**. LuneOS builds everything at `0x5000200`, hard-float. The two
+soft-float. LuneOS builds everything hard-float, `0x5000400`. The two
 cannot be mixed in one process: they disagree about whether floating-point
 arguments travel in VFP registers or in the core registers, so every call across
 the boundary with a `float` or `double` in it silently corrupts its arguments.

@@ -32,6 +32,10 @@ DEPENDS = "sdl12-compat libsdl2 virtual/egl virtual/libgles1 virtual/libgles2 \
 
 inherit pkgconfig
 
+# B defaults to S, which has the standalone build's Makefile in it; base
+# do_configure would run "oe_runmake clean" through it on any reconfigure.
+do_configure[noexec] = "1"
+
 # The Makefile in the repository targets a standalone clang cross-build against a
 # Debian armel sysroot. Under BitBake the toolchain is already correct, so the
 # shims are compiled directly and the Makefile's cross-compilation machinery is

@@ -33,12 +33,15 @@ EXTRA_OECMAKE = "-DSDL12TESTS=OFF -DSDL12DEVEL=ON"
 DEPENDS:append:pdk-armel = " patchelf-native"
 
 do_install:append:pdk-armel() {
-    # Drop the symlinks first, then move the real object aside and restamp it.
-    find ${D}${libdir} -maxdepth 1 -type l -name 'libSDL-1.2.so*' -delete
+    # Upstream installs the real object as libSDL-1.2.so.<PV> (libSDL-1.2.so.1.2.76),
+    # with libSDL-1.2.so.0 and libSDL.so as symlinks onto it - so match on the
+    # stem, not on the soname. Drop the symlinks first: the webOS shim provides
+    # both of those names itself.
+    find ${D}${libdir} -maxdepth 1 -type l \( -name 'libSDL-1.2.so*' -o -name 'libSDL.so' \) -delete
 
-    real=$(find ${D}${libdir} -maxdepth 1 -type f -name 'libSDL-1.2.so.0*' -print -quit)
+    real=$(find ${D}${libdir} -maxdepth 1 -type f -name 'libSDL-1.2.so*' -print -quit)
     if [ -z "$real" ]; then
-        bbfatal "sdl12-compat: no libSDL-1.2.so.0* to rename - did upstream change its layout?"
+        bbfatal "sdl12-compat: no libSDL-1.2.so* to rename - did upstream change its layout?"
     fi
 
     mv "$real" ${D}${libdir}/libSDL12compat.so.0

@@ -47,8 +47,8 @@ The tune is the whole trick:
 
 | tune | `TUNE_FEATURES` | ELF flags | |
 |---|---|---|---|
-| `armv7athf-neon` | includes `callconvention-hard` | `0x5000200` | LuneOS |
-| `armv7at-neon` | no `callconvention-hard` | `0x5000002` | PDK, Debian armel |
+| `armv7athf-neon` | includes `callconvention-hard` | `0x5000400` | LuneOS |
+| `armv7at-neon` | no `callconvention-hard` | `0x5000200` | this multiconfig, Debian armel |
 
 `armv7at-neon` is EABI5 with the soft-float *calling convention* over a real
 VFP/NEON unit — byte-for-byte the ABI Palm's 2010 toolchain emitted. That is what
@@ -200,7 +200,7 @@ The check that matters, on the built image:
 
 ```sh
 readelf -h /opt/pdk/sysroot/usr/lib/libpdl.so | grep Flags
-# Flags: 0x5000002, Version5 EABI, soft-float ABI
+# Flags: 0x5000200, Version5 EABI, soft-float ABI
 ```
 
 If that says hard-float, the multiconfig tune did not take effect and nothing

@@ -117,8 +117,9 @@ The single most useful sanity check. Every library the app loads must say
 
 ```sh
 readelf -h build/libpdl.so | grep Flags
-# Flags: 0x5000002, Version5 EABI, soft-float ABI       ← correct
-# Flags: 0x5000200, Version5 EABI, hard-float ABI       ← wrong, will corrupt floats
+# Flags: 0x5000200, Version5 EABI, soft-float ABI      ← correct
+# Flags: 0x5000002, Version5 EABI, <unknown>            ← also correct, see below
+# Flags: 0x5000400, Version5 EABI, hard-float ABI      ← wrong, will corrupt floats
 ```
 
 ## Smoke tests

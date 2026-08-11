@@ -21,8 +21,9 @@ Check the ABI of every library in the process:
 
 ```sh
 readelf -h lib.so | grep Flags
-# 0x5000002  soft-float ABI   ← correct
-# 0x5000200  hard-float ABI   ← wrong
+# 0x5000200  soft-float ABI   ← correct
+# 0x5000002  <unknown>         ← also correct: Palm's own toolchain, see below
+# 0x5000400  hard-float ABI   ← wrong
 ```
 
 A single hard-float library in a soft-float process corrupts every float and
