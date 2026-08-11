@@ -11,11 +11,13 @@ inherit packagegroup
 RDEPENDS:${PN} = " \
     pdk-sysroot \
     pdk-tools \
+    pdk-sysroot-fonts \
 "
 
 # Legacy luna-service2 (2.0.0-136) is wire-incompatible with the current one, so
-# the shims shell out to luna-send rather than speaking the protocol.
-RDEPENDS:${PN} += "luna-send"
+# the shims shell out to luna-send rather than speaking the protocol. luna-send
+# is a binary inside the luna-service2 package - there is no package by that name.
+RDEPENDS:${PN} += "luna-service2"
 
 # PDK apps expect a working PulseAudio socket. SDL_AUDIODRIVER=dummy is not an
 # acceptable substitute - it turns Mix_OpenAudio failures into NULL dereferences

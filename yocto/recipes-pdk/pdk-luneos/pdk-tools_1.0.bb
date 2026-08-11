@@ -46,4 +46,5 @@ RDEPENDS:${PN}:append:x86-64 = " qemu-user-arm"
 RDEPENDS:${PN}:append:x86 = " qemu-user-arm"
 RDEPENDS:${PN}:append:aarch64 = " qemu-user-arm"
 
-RDEPENDS:${PN} += "luna-send"
+# luna-send ships inside luna-service2; there is no luna-send package.
+RDEPENDS:${PN} += "luna-service2"

@@ -71,12 +71,11 @@ PDK_SYSROOT_MEDIA = " \
 
 PDK_SYSROOT_SHIMS = "pdk-luneos"
 
-# Fonts: twelve titles hardcode /usr/share/fonts/PreludeCondensed-Medium.ttf and
-# never check TTF_OpenFont for NULL, so a missing font is a crash rather than
-# ugly text. The webOS fonts are not redistributable, so a metric-compatible
-# substitute is installed under the expected names by pdk-sysroot-fonts; see
-# docs/yocto.md.
-IMAGE_INSTALL += "pdk-sysroot-fonts"
+# No fonts here. Applications open /usr/share/fonts by absolute path, and that
+# resolves against the host rootfs - qemu-user falls back to the real path when
+# the sysroot has no such file, and on native ARM there is no translation at all.
+# So pdk-sysroot-fonts is installed by packagegroup-luneos-pdk in the main
+# configuration, where LuneOS's own luna-init-fonts lives.
 
 # Nothing in this tree is ever executed by the host system directly, and the ABI
 # deliberately differs from the image that carries it.
