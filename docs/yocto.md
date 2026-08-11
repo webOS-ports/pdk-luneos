@@ -56,13 +56,15 @@ VFP/NEON unit — byte-for-byte the ABI Palm's 2010 toolchain emitted. That is w
 
 ## Enabling it
 
-In `conf/bblayers.conf`:
+**In a LuneOS checkout**, the recipes are already in `meta-luneos` (see
+[Where the recipes live](#where-the-recipes-live)), so there is no
+`bblayers.conf` change to make. Anywhere else, add the standalone layer:
 
 ```
 BBLAYERS += "/path/to/pdk-luneos/yocto"
 ```
 
-In `conf/local.conf`:
+Either way, in `conf/local.conf`:
 
 ```
 BBMULTICONFIG = "pdk-armel"
@@ -145,18 +147,23 @@ sysroot, so it is not offered here.
 
 This is the single highest-leverage outstanding item in the project.
 
-**2. Fonts.** Palm's Prelude family is not redistributable. `pdk-sysroot-fonts`
-symlinks the filenames twelve titles hardcode to DejaVu Sans Condensed so
-`TTF_OpenFont` returns non-NULL and they do not crash. Text will not look right.
-Point `PDK_WEBOS_FONTS` at a directory of real Prelude fonts if you have a device
-image.
+**2. Fonts — mostly a non-issue.** LuneOS already ships the complete Prelude
+family through `luna-init-fonts`, all 34 faces the legacy image had, so
+`pdk-sysroot-fonts` simply depends on it. What LuneOS does not carry is the
+Microsoft core fonts Palm licensed (Arial, Times New Roman, Courier New, Georgia,
+Verdana, Lucida Console) plus four CJK faces. Liberation is metric-compatible with
+the first three — same advance widths, so text laid out for Arial still fits —
+and Georgia/Verdana fall back to a face that reflows. `PDK_LEGACY_FONTS` takes the
+originals from a device image if you have one.
 
 **3. `freedreno` on real hardware is untested.** `conf/multiconfig/pdk-armel.conf`
 selects `swrast,freedreno`, on the expectation that a2xx covers the TouchPad's
 Adreno 220. Nobody has run it. On the emulator llvmpipe is used and works.
 
-**4. `SRCREV = "${AUTOREV}"`** in `pdk-luneos_git.bb` and `pdk-tools_1.0.bb`. Pin
-both to a release commit before shipping an image.
+**4. `SRCREV` is pinned to a commit, not a tag.** `pdk-luneos_git.bb` and
+`pdk-tools_1.0.bb` name an explicit revision, which is right, but it has to be
+bumped by hand whenever the shims change. Cut a tag and pin to that once the
+interface settles.
 
 **5. Image size.** The soft-float userland is a second glibc, a second Mesa and a
 second SDL2 — a few hundred megabytes. On a 4 GB device that matters. Nothing in
@@ -165,14 +172,22 @@ ABIs differ.
 
 ## Where the recipes live
 
-They are in **this repository**, under `yocto/`, and the layer is added to
-`bblayers.conf` by path — not copied into `meta-webos-ports`. That keeps them
-versioned alongside the code they build, and keeps them out of the way of a layer
-that has lost uncommitted work to tooling before.
+Two copies, deliberately:
 
-If you would rather have them in `meta-luneos`, the tree maps directly onto
-`meta-webos-ports/meta-luneos/recipes-pdk/`; only `conf/layer.conf` becomes
-redundant.
+* **`yocto/` in this repository** is the upstream copy and a complete standalone
+  layer (`meta-pdk`), so the recipes are versioned alongside the code they build
+  and anyone can use them without meta-webos-ports.
+* **`meta-webos-ports/meta-luneos/`** carries the deployed copy in a LuneOS
+  checkout — `recipes-pdk/`, `recipes-graphics/sdl12-compat/`,
+  `recipes-devtools/qemu/`, plus `conf/machine/pdk-armel.conf` and
+  `conf/multiconfig/pdk-armel.conf`. `conf/layer.conf` is not copied; meta-luneos
+  has its own, and its `BBFILES` glob picks `recipes-pdk` up automatically.
+
+Only one of the two should ever be in `bblayers.conf` — having both would give
+BitBake duplicate recipes. In a LuneOS checkout that is meta-luneos, and no
+`bblayers.conf` change is needed at all.
+
+When changing a recipe, change it here and copy across. Keep an eye on drift.
 
 ## Verifying a build
 

@@ -4,16 +4,25 @@
 # drags in a full qemu built for fifteen architectures with SDL, KVM and virgl.
 # The only thing PDK applications need is user-mode ARM emulation.
 #
-# Conditional on the 'pdk' DISTRO_FEATURE, so merely having this layer in
-# bblayers.conf does not change anyone else's qemu. Enable with:
+# Conditional on the 'pdk' DISTRO_FEATURE, so merely having this layer present
+# does not change anyone else's qemu. Enable with:
 #
 #     DISTRO_FEATURES:append = " pdk"
+#
+# Done in an anonymous python function rather than with inline expansion so that
+# when the feature is off, QEMU_TARGETS and PACKAGECONFIG are left entirely alone
+# - a bbappend that restates oe-core's default list would silently go stale the
+# next time upstream changes it.
 
-QEMU_TARGETS = "${@bb.utils.contains('DISTRO_FEATURES', 'pdk', 'arm', \
-    'arm aarch64 i386 loongarch64 mips mipsel mips64 mips64el ppc ppc64 ppc64le riscv32 riscv64 sh4 x86_64', d)}"
+python () {
+    if not bb.utils.contains('DISTRO_FEATURES', 'pdk', True, False, d):
+        return
 
-# System emulation, its display backends and its accelerators are all dead weight
-# for user-mode ARM. Removing rather than reassigning keeps whatever else the
-# distro has configured intact.
-PACKAGECONFIG:remove = "${@bb.utils.contains('DISTRO_FEATURES', 'pdk', \
-    'sdl kvm xen virglrenderer epoxy seccomp fdt', '', d)}"
+    d.setVar('QEMU_TARGETS', 'arm')
+
+    # System emulation, its display backends and its accelerators are all dead
+    # weight for user-mode ARM.
+    drop = {'sdl', 'kvm', 'xen', 'virglrenderer', 'epoxy', 'seccomp', 'fdt'}
+    cfg = (d.getVar('PACKAGECONFIG') or '').split()
+    d.setVar('PACKAGECONFIG', ' '.join(c for c in cfg if c not in drop))
+}
