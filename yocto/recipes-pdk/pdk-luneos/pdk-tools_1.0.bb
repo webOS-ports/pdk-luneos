@@ -51,11 +51,10 @@ FILES:${PN} = "${PDK_PREFIX} ${sysconfdir}/profile.d/pdk.sh"
 
 RDEPENDS:${PN} = "pdk-sysroot"
 
-# Only where the CPU cannot execute ARM32 itself. qemu-user-arm is a dynamic
-# package of oe-core's qemu recipe and contains /usr/bin/qemu-arm.
-RDEPENDS:${PN}:append:x86-64 = " qemu-user-arm"
-RDEPENDS:${PN}:append:x86 = " qemu-user-arm"
-RDEPENDS:${PN}:append:aarch64 = " qemu-user-arm"
+# The qemu-user-arm dependency lives in packagegroup-luneos-pdk, not here.
+# allarch.bbclass sets TARGET_ARCH = "allarch", so TRANSLATED_TARGET_ARCH is
+# "allarch" too and architecture overrides (:x86-64, :aarch64) silently never
+# match in this recipe - the dependency would be dropped on every machine.
 
 # luna-send ships inside luna-service2; there is no luna-send package.
 RDEPENDS:${PN} += "luna-service2"

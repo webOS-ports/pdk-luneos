@@ -57,9 +57,17 @@ do_compile() {
         -l:libSDL12compat.so.0 -ldl
 
     # GLES1 extension entry points that Mesa only exposes via eglGetProcAddress.
+    #
+    # --no-as-needed on libGLESv1_CM is load-bearing. This shim resolves every
+    # symbol it forwards through eglGetProcAddress/dlsym, so it never references
+    # a GLESv1 symbol at link time - and OE puts -Wl,--as-needed in LDFLAGS by
+    # default, which then drops the library from NEEDED entirely. Applications
+    # link libGLES_CM.so expecting core GLES1 to resolve *through* it, so the
+    # chain has to be recorded even though this object does not use it:
+    #   ./giddy3: symbol lookup error: undefined symbol: glMatrixMode
     ${CC} ${CFLAGS} ${LDFLAGS} -fPIC -shared -Wl,-soname,libGLES_CM.so \
         -o ${B}/out/libGLES_CM.so ${S}/src/gles_oes_shim.c \
-        -lGLESv1_CM -lEGL -ldl
+        -Wl,--no-as-needed -lGLESv1_CM -lEGL -Wl,--as-needed -ldl
 
     # Stub for Palm's media-service video library. NB: CIN_Init returns non-zero
     # for success; see docs/architecture.md.
