@@ -153,18 +153,16 @@ Use mode 2 to reproduce known-good behaviour; use mode 1 for something shippable
 
 Stating these plainly, because two of them will bite on the first build:
 
-**1. SDL2 version vs. luna-surfacemanager.** oe-core scarthgap ships SDL2 2.30.1.
-LuneOS's compositor advertises `wl_shell` and `wl_webos_shell` but **not
-`xdg_wm_base`**, and SDL2 removed its `wl_shell` backend in 2.0.16. So a
-from-source sysroot will build fine and then fail to get a window on LuneOS.
+**1. luna-surfacemanager needs the `xdg_wm_base` patch.** oe-core scarthgap ships
+SDL2 2.30.1, which has no `wl_shell` backend, and the stock compositor advertises
+only `wl_shell` and `wl_webos_shell`. Without the patch a game builds and runs
+but never gets a window.
 
-The fix is in luna-surfacemanager, not here: **add `XdgShell`**. Until then, mode 1
-works on a normal compositor (a dev workstation) but not on a device, and mode 2
-pins SDL2 to 2.0.14. Pinning oe-core's `libsdl2` down to 2.0.14 inside the
-multiconfig is possible but that release does not build cleanly against a modern
-sysroot, so it is not offered here.
-
-This is the single highest-leverage outstanding item in the project.
+meta-luneos carries
+`recipes-webos-ose/luna-surfacemanager/luna-surfacemanager/0016-Advertise-xdg_wm_base-so-modern-toolkits-can-map-wind.patch`,
+which adds a `QWaylandXdgShell` next to the existing `QWaylandWlShell`. If you
+are building against an unpatched luna-surfacemanager, carry that patch or pin
+SDL2 to 2.0.14 in the multiconfig.
 
 **2. Fonts — mostly a non-issue.** LuneOS already ships the complete Prelude
 family through `luna-init-fonts`, all 34 faces the legacy image had, so

@@ -236,21 +236,36 @@ no root:
 * `patchelf --set-soname` renames sdl12-compat so it owns `libSDL-1.2.so.0`'s
   place in the graph while our shim takes the name.
 
-## The Wayland shell pin
+## The Wayland shell (was a pin, now fixed)
 
-luna-surfacemanager advertises `wl_shell` and `wl_webos_shell`. It does **not**
-advertise `xdg_wm_base`. SDL2 removed its `wl_shell` backend in 2.0.16, so on
-LuneOS the sysroot is pinned to **SDL2 2.0.14** — the last release that can talk
-to LSM at all. 2.0.14 has its own bugs, and pinning a decade-old SDL2 forever is
-not a plan.
+luna-surfacemanager advertised `wl_shell` and `wl_webos_shell` and nothing else —
+`weboscorecompositor.cpp` only ever constructed `QWaylandWlShell`. SDL2 removed
+its `wl_shell` backend in 2.0.16, so anything newer connected, bound
+`wl_compositor`, and then had no way to give a surface a role. It never attached
+a buffer, `hasContent()` stayed false, no `WebOSSurfaceItem` was mapped, and the
+window silently never appeared. That is why the sysroot used to pin SDL2 2.0.14.
 
-**Adding `XdgShell` to luna-surfacemanager unpins this**, and would let the sysroot
-track current SDL2. It is the highest-leverage outstanding change in the project
-and it lives outside this repository.
+The compositor now also constructs a `QWaylandXdgShell` and answers the initial
+configure with `sendFullscreen(outputSize)` — xdg_shell requires a configure
+before the client may attach its first buffer. Surface handling on the webOS side
+was already role-agnostic (items come from `QWaylandCompositor::surfaceCreated`
+regardless of shell), so that plus mapping `xdg_toplevel.app_id` onto the item
+was the whole change.
 
-On a development workstation the pin does not apply: SDL2 2.0.14 speaks
-`xdg_shell` too, so any modern compositor works, which is why host-side iteration
-is so much faster than testing in the VM.
+Verified on the emulator with `WAYLAND_DEBUG=1`:
+
+```
+wl_registry@2.global(17, "xdg_wm_base", 1)
+ -> xdg_wm_base@9.get_xdg_surface(new id xdg_surface@20, wl_surface@15)
+ -> xdg_surface@20.get_toplevel(new id xdg_toplevel@21)
+ -> xdg_toplevel@21.set_app_id("giddy3")
+    xdg_toplevel@21.configure(1920, 1080, array[4])
+ -> wl_surface@15.attach(wl_buffer@17, 0, 0)
+ -> wl_surface@15.commit()
+```
+
+The patch lives in meta-luneos, not here:
+`recipes-webos-ose/luna-surfacemanager/luna-surfacemanager/0016-Advertise-xdg_wm_base-so-modern-toolkits-can-map-wind.patch`.
 
 ## The jail
 

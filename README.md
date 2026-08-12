@@ -96,13 +96,23 @@ Not in git, by design: `sysroot/`, `reference/`, `testapp/`, `pkgcache/`. They h
 either half a gigabyte of regenerable downloads or material extracted from
 proprietary webOS images — see [reverse-engineering.md](docs/reverse-engineering.md).
 
-## The largest outstanding issue
+## Status of the Wayland shell problem — fixed
 
-luna-surfacemanager advertises `wl_shell` and `wl_webos_shell` but **no
-`xdg_wm_base`**. SDL2 dropped `wl_shell` in 2.0.16, so the target is currently
-pinned to SDL2 2.0.14, which has bugs of its own. Adding `XdgShell` to
-luna-surfacemanager unpins the whole stack and is the single highest-leverage fix
-left. See [docs/architecture.md#the-wayland-shell-pin](docs/architecture.md#the-wayland-shell-pin).
+luna-surfacemanager used to advertise only `wl_shell` and `wl_webos_shell`.
+`wl_shell` was deprecated in 2016 and removed from SDL2 in 2.0.16, so a modern
+SDL2 could connect, bind `wl_compositor`, and then have no way to give its
+surface a role — it never attached a buffer and the window silently never
+appeared. That pinned the whole stack to SDL2 2.0.14.
+
+`weboscompositor` now creates a `QWaylandXdgShell` alongside the existing
+`QWaylandWlShell` and answers the initial configure (webOS surfaces are
+fullscreen at the output size), so `xdg_wm_base` is advertised and current
+toolkits map windows normally. The patch is
+`0016-Advertise-xdg_wm_base-so-modern-toolkits-can-map-wind.patch` in
+meta-luneos's luna-surfacemanager recipe.
+
+With that in place the SDL2 pin is gone — the sysroot uses whatever SDL2 the
+distro ships (2.30.1 in scarthgap).
 
 ## Licence
 

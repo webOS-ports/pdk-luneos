@@ -40,7 +40,7 @@ soft-float. The only boundary with the hard-float system is the Wayland socket.
 | NULL deref (`si_addr=0`) inside `swrast_dri.so` shortly after the first GL call | llvmpipe's LLVM JIT faulting under `qemu-arm` — LLVM compiles to ARM and qemu then re-translates it, a double JIT. Seen with Mesa 24.0.7 + LLVM 18; Mesa 22.3 + LLVM 15 was fine. Workaround: `GALLIUM_DRIVER=softpipe`, which costs a lot of speed but runs. Does not apply on real ARM hardware, where there is no emulation. |
 | extremely slow, load average pinned | llvmpipe sized itself from the core count. **Pin `LP_NUM_THREADS`** — 32 threads under emulation is *slower* than 2. |
 | the app renders at the wrong size, or picks the wrong asset set | Screen size is per-title. HD titles want 1024×768; Pre-era titles fail there and want 320×480. Set `PDK_SCREEN_WIDTH`/`HEIGHT` in the app's `pdk.env`. |
-| no window appears on LuneOS, works on the dev box | luna-surfacemanager has no `xdg_wm_base`; SDL2 must be 2.0.14 or older. See [architecture.md](architecture.md#the-wayland-shell-pin). |
+| no window appears on LuneOS, works on the dev box | luna-surfacemanager is missing the `xdg_wm_base` patch. Check with `WAYLAND_DEBUG=1` — the registry should list `xdg_wm_base` alongside `wl_shell` and `wl_webos_shell`. See [architecture.md](architecture.md#the-wayland-shell-was-a-pin-now-fixed). |
 
 ## Crashes
 
