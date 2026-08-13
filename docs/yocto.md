@@ -69,6 +69,14 @@ Either way, in `conf/local.conf`:
 ```
 BBMULTICONFIG = "pdk-armel"
 PDK_QEMU_USERMODE_ONLY = "1"
+
+# Masking the webOS and BSP layers in the multiconfig makes bitbake warn once per
+# empty layer on every parse. These must live here, not in the multiconfig:
+# cooker.py reads them from the base datastore, via
+# collection_priorities(..., self.data), even though the warning is per-mc.
+BBFILE_PATTERN_IGNORE_EMPTY_meta-luneui = "1"
+BBFILE_PATTERN_IGNORE_EMPTY_pine64-luneos-layer = "1"
+# ... one per masked layer; see conf/local.conf in the LuneOS tree
 IMAGE_INSTALL:append:pn-luneos-image = " packagegroup-luneos-pdk"
 IMAGE_INSTALL:append:pn-luneos-dev-image = " packagegroup-luneos-pdk"
 ```
