@@ -181,14 +181,16 @@ the first three — same advance widths, so text laid out for Arial still fits �
 and Georgia/Verdana fall back to a face that reflows. `PDK_LEGACY_FONTS` takes the
 originals from a device image if you have one.
 
-**3. llvmpipe crashes under `qemu-arm` with this Mesa/LLVM combination.** On the
-qemux86-64 emulator a GLES1 title faults with a NULL dereference inside
-`swrast_dri.so` on its first real GL work. `GALLIUM_DRIVER=softpipe` runs
-correctly, so it is llvmpipe's LLVM-18 JIT under emulation — LLVM compiles to
-ARM, qemu re-translates that to x86-64, and something in that path is wrong.
-The Debian sysroot (Mesa 22.3, LLVM 15) does not do this. Only affects emulated
-targets; on real ARM hardware there is no second JIT and freedreno is used
-anyway.
+**3. llvmpipe crashes under `qemu-arm`, and it is LLVM rather than Mesa.**
+On the qemux86-64 emulator a GLES1 title segfaults on its first real GL work.
+Tested: Mesa 24.0.7 crashes, Mesa 26.2.0 crashes identically, and the Debian
+sysroot's Mesa 22.3 does not — the difference is LLVM 18 versus LLVM 15, not the
+Mesa version. Raising Mesa to match the host did not help.
+
+`pdk-run` defaults to `GALLIUM_DRIVER=softpipe` on the emulated path, which is
+correct but roughly 7x slower. Only affects emulated targets; real ARM hardware
+has no second JIT and uses freedreno. If the speed matters on the emulator, the
+lead to pull is an older LLVM in the multiconfig, not a newer Mesa.
 
 **4. `freedreno` on real hardware is untested.** `conf/multiconfig/pdk-armel.conf`
 selects `swrast,freedreno`, on the expectation that a2xx covers the TouchPad's
