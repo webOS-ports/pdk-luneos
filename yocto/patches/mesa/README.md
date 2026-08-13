@@ -29,3 +29,20 @@ gallivm's error propagation and is not attempted here.
 
 Worth sending upstream: the first one is a plain use-before-check that affects
 anyone whose MCJIT creation fails, not only emulated ARM.
+
+## 0002-gallivm-handle-a-failed-execution-engine-instead-of-a.patch
+
+`gallivm_compile_module()` reacted to `init_gallivm_engine()` failing with
+`assert(0)`, and `gallivm_jit_function()` guarded the engine with asserts. Mesa
+builds with `NDEBUG`, so all of them are compiled out and the failure was not
+handled at all.
+
+With both patches applied the failure finally prints its own cause instead of
+crashing:
+
+```
+Unable to find target for this triple (no targets are registered)
+gallivm: failed to create an LLVM execution engine; cannot JIT shaders
+```
+
+which is what led to the real bug — see `llvm-native-target.md`.
