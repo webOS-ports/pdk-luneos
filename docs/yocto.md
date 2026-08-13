@@ -181,16 +181,17 @@ the first three — same advance widths, so text laid out for Arial still fits �
 and Georgia/Verdana fall back to a face that reflows. `PDK_LEGACY_FONTS` takes the
 originals from a device image if you have one.
 
-**3. llvmpipe crashes under `qemu-arm`, and it is LLVM rather than Mesa.**
-On the qemux86-64 emulator a GLES1 title segfaults on its first real GL work.
-Tested: Mesa 24.0.7 crashes, Mesa 26.2.0 crashes identically, and the Debian
-sysroot's Mesa 22.3 does not — the difference is LLVM 18 versus LLVM 15, not the
-Mesa version. Raising Mesa to match the host did not help.
+**3. LLVM needs `LLVM_HOST_TRIPLE` for cross builds.** oe-core's llvm recipe
+never sets it for `class-target`, so CMake detects the build machine and emits
+`LLVM_NATIVE_ARCH X86` with `LLVM_NATIVE_TARGET` undefined.
+`LLVMInitializeNativeTarget()` is `#ifdef LLVM_NATIVE_TARGET … #else return 1`,
+so it registers nothing and llvmpipe can never create an execution engine —
+on any cross-built OE target, emulated or not.
 
-`pdk-run` defaults to `GALLIUM_DRIVER=softpipe` on the emulated path, which is
-correct but roughly 7x slower. Only affects emulated targets; real ARM hardware
-has no second JIT and uses freedreno. If the speed matters on the emulator, the
-lead to pull is an older LLVM in the multiconfig, not a newer Mesa.
+`meta-luneos/recipes-devtools/llvm/llvm_%.bbappend` adds
+`-DLLVM_HOST_TRIPLE=${TARGET_SYS}`. With it, llvmpipe works under `qemu-arm` and
+is about **6x** faster than softpipe (measured: 172 vs 26 buffers, 351 vs 61
+frame callbacks over 45s). Worth sending upstream.
 
 **4. `freedreno` on real hardware is untested.** `conf/multiconfig/pdk-armel.conf`
 selects `swrast,freedreno`, on the expectation that a2xx covers the TouchPad's
