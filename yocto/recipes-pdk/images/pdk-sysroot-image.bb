@@ -41,9 +41,14 @@ PDK_SYSROOT_BASE = " \
 
 # Mesa, and the Wayland client side. There is no X11 in here: SDL2 talks Wayland
 # to luna-surfacemanager directly.
+# Mesa 26 restructured its packaging: there is no "mesa" package any more, and
+# the DRI megadriver was replaced by libgallium, which is where the actual
+# driver code and ${libdir}/dri/* now live. Naming the old packages fails at
+# rootfs time rather than parse time:
+#   opkg_prepare_url_for_install: Couldn't find anything to satisfy 'mesa'
 PDK_SYSROOT_GRAPHICS = " \
-    mesa \
-    mesa-megadriver \
+    libgallium \
+    libgbm \
     libegl-mesa \
     libgles1-mesa \
     libgles2-mesa \
