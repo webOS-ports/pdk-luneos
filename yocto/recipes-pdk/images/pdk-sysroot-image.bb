@@ -51,12 +51,18 @@ PDK_SYSROOT_GRAPHICS = " \
     libxkbcommon \
 "
 
+# The SDL 1.2 helper sonames, not the SDL2 ones. Games link
+# libSDL_image-1.2.so.0 / libSDL_mixer-1.2.so.0 / libSDL_ttf-2.0.so.0 /
+# libSDL_net-1.2.so.0; libSDL2_image-2.0.so.0 and friends are different
+# libraries and satisfy none of them. Shipping the SDL2 set here was a real bug:
+# only titles needing no helper at all could load.
 PDK_SYSROOT_SDL = " \
     libsdl2 \
     sdl12-compat \
-    libsdl2-image \
-    libsdl2-ttf \
-    libsdl2-mixer \
+    sdl-image \
+    sdl-mixer \
+    sdl-ttf \
+    sdl-net \
 "
 
 # Games load music through SDL_mixer, which needs the codecs present at runtime.
