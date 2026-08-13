@@ -92,6 +92,15 @@ QEMU=$(find_qemu) || {
     exit 1
 }
 
+# llvmpipe JITs shaders to ARM and qemu then re-translates that to the host -
+# a double JIT - and with Mesa 24 / LLVM 18 it faults with a NULL dereference
+# inside swrast_dri.so on the first real GL work. softpipe interprets instead
+# and is correct, just slow. Only applies under emulation; native ARM never
+# reaches this point, and there a real GPU driver (freedreno) is used anyway.
+# Set GALLIUM_DRIVER yourself to override.
+: "${GALLIUM_DRIVER:=softpipe}"
+export GALLIUM_DRIVER
+
 exec "$QEMU" -L "$SYSROOT" \
     -E LD_LIBRARY_PATH="$LIBPATH" \
     ${PDK_PRELOAD:+-E LD_PRELOAD=$PDK_PRELOAD} \
