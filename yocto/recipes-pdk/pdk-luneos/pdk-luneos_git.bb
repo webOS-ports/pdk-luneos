@@ -74,7 +74,7 @@ do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} -fPIC -shared -Wl,-soname,libSDL_cinema.so \
         -o ${B}/out/libSDL_cinema.so ${S}/src/sdl_cinema_stub.c
 
-    # LD_PRELOAD fault reporter, shipped in the -dbg package.
+    # LD_PRELOAD fault reporter. See PDK_PRELOAD in docs/running.md.
     ${CC} ${CFLAGS} ${LDFLAGS} -fPIC -shared -funwind-tables \
         -o ${B}/out/crashcatch.so ${S}/src/crashcatch.c -ldl
 }
@@ -105,8 +105,14 @@ FILES:${PN} = " \
     ${libdir}/libSDL.so \
     ${libdir}/libGLES_CM.so \
     ${libdir}/libSDL_cinema.so \
+    ${libdir}/crashcatch.so \
 "
-FILES:${PN}-dbg += "${libdir}/crashcatch.so"
+
+# crashcatch.so ships in the main package, not -dbg. It is a 16KB LD_PRELOAD
+# fault reporter and the moment you want it is when a title is crashing on a
+# device - which is exactly when the -dbg package will not be installed:
+#   ERROR: ld.so: object '/usr/lib/crashcatch.so' from LD_PRELOAD cannot be
+#   preloaded (cannot open shared object file): ignored.
 
 RDEPENDS:${PN} = "sdl12-compat"
 
