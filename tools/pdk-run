@@ -64,8 +64,15 @@ ulimit -c 0 2>/dev/null || true
 # the soft-float sysroot, which means invoking its loader explicitly rather than
 # the system one.
 #
-# Everywhere else (x86-64 emulator, arm64 devices without ARM32 userspace) the
-# whole guest runs under qemu-user.
+# arm64 counts as native too when the kernel carries CONFIG_COMPAT, i.e. it runs
+# AArch32 at EL0. That covers the LuneOS arm64 devices checked so far - PineTab2
+# (6.6) and tissot-halium (4.9) both set it - so they execute these binaries on
+# the CPU rather than under emulation. uname -m still says aarch64 there, which
+# is why this used to fall through to qemu; probe the 32-bit loader instead of
+# trusting the machine name, and fall back if the kernel has no compat layer.
+#
+# Everywhere else (x86-64 emulator, arm64 without ARM32 userspace) the whole
+# guest runs under qemu-user.
 
 find_qemu() {
     for q in "$PDK/qemu-arm" "$PDK/qemu-arm-static" \
@@ -76,10 +83,43 @@ find_qemu() {
 }
 
 case "$(uname -m)" in
-  armv7*|armv8l)
-    LOADER=$(ls "$SYSROOT"/lib/ld-linux.so.3 "$SYSROOT"/lib/ld-linux-armhf.so.3 2>/dev/null | head -1)
+  armv7*|armv8l|aarch64)
+    # head -n 1, not head -1: this runs on the target, where head is busybox's
+    # and rejects the obsolete form. Only the ARM branch ever reaches it, so it
+    # went unnoticed until this ran on a device.
+    LOADER=$(ls "$SYSROOT"/lib/ld-linux.so.3 "$SYSROOT"/lib/ld-linux-armhf.so.3 2>/dev/null | head -n 1)
+    # On aarch64 the loader is a 32-bit binary, so running it at all is the
+    # test for AArch32 support: without CONFIG_COMPAT execve() returns ENOEXEC
+    # and this fails, leaving us on the qemu path below.
+    if [ -n "$LOADER" ] && ! "$LOADER" --version >/dev/null 2>&1; then
+        echo "pdk-run: $(uname -m) kernel has no AArch32 support, using emulation" >&2
+        LOADER=
+    fi
     if [ -n "$LOADER" ]; then
-        export LD_LIBRARY_PATH="$SYSROOT/lib:$SYSROOT/usr/lib:$APPDIR:$APPDIR/$BINDIR"
+        # qemu-user is given -L "$SYSROOT" and so treats it as /, which quietly
+        # fixes up the absolute RPATHs and multiarch paths baked into Debian's
+        # libraries. Running natively there is no such prefix: libpulse's RPATH
+        # of /usr/lib/arm-linux-gnueabi/pulseaudio resolves against the host,
+        # where it is either absent or aarch64, and the dlopen of SDL2 fails
+        # with "Failed loading SDL2 library". Name those directories explicitly.
+        SYSLIBS="$SYSROOT/lib:$SYSROOT/usr/lib"
+        for d in "$SYSROOT/lib/arm-linux-gnueabi" \
+                 "$SYSROOT/usr/lib/arm-linux-gnueabi" \
+                 "$SYSROOT/usr/lib/arm-linux-gnueabi/pulseaudio" \
+                 "$SYSROOT/usr/lib/pulseaudio"; do
+            [ -d "$d" ] && SYSLIBS="$SYSLIBS:$d"
+        done
+        export LD_LIBRARY_PATH="$SYSLIBS:$APPDIR:$APPDIR/$BINDIR"
+        # Same story for Mesa: its DRI driver directory and glvnd's EGL vendor
+        # directory are compiled in as absolute paths, so natively they resolve
+        # against the aarch64 host and EGL fails to initialise at all ("Unable
+        # to set video: EGL not initialized"). Under qemu -L they landed inside
+        # the sysroot for free.
+        for d in "$SYSROOT/usr/lib/arm-linux-gnueabi/dri" "$SYSROOT/usr/lib/dri"; do
+            [ -d "$d" ] && export LIBGL_DRIVERS_PATH="${LIBGL_DRIVERS_PATH:+$LIBGL_DRIVERS_PATH:}$d"
+        done
+        [ -d "$SYSROOT/usr/share/glvnd/egl_vendor.d" ] && \
+            export __EGL_VENDOR_LIBRARY_DIRS="$SYSROOT/usr/share/glvnd/egl_vendor.d"
         [ -n "$PDK_PRELOAD" ] && export LD_PRELOAD="$PDK_PRELOAD"
         exec "$LOADER" --library-path "$LD_LIBRARY_PATH" "./$BINNAME" "$@"
     fi
