@@ -212,41 +212,57 @@ void glScissor(GLint x, GLint y, GLsizei w, GLsizei h)
 // whole drawable: the glOrthof projection then maps the game's world onto the full
 // panel, which is precisely the scaling that is wanted.
 //
-// Bounded to the first frames because glGetIntegerv forces a pipeline sync, and at
-// the frame rates these titles get on a software rasteriser that is not free.
+// Rechecked periodically rather than only at startup, because the drawable can
+// change size while the game runs: LSM rotates by swapping the shell's logical
+// size, so a card goes from portrait to landscape and the client is simply handed
+// a different surface. The viewport the game never sets would otherwise stay at
+// the pre-rotation size and the picture would be wrong from then on.
+//
+// Not every frame: glGetIntegerv forces a pipeline sync, and at the frame rates
+// these titles get that is not free. Once every VIEWPORT_CHECK_FRAMES is enough -
+// a rotation is a human-scale event, and the animation takes 500ms.
 #define GL_VIEWPORT 0x0BA2
-#define VIEWPORT_CHECK_FRAMES 60
+#define VIEWPORT_CHECK_FRAMES 30
 
 void glClear(unsigned int mask)
 {
     static void (*fn)(unsigned int);
-    static int frames;
+    static unsigned frames;
+    static int last_dw, last_dh;
     if (!fn) fn = (void (*)(unsigned int))dlsym(RTLD_NEXT, "glClear");
     if (!fn) return;
 
-    if (frames < VIEWPORT_CHECK_FRAMES && !fbo_bound()) {
+    if ((frames % VIEWPORT_CHECK_FRAMES) == 0 && !fbo_bound()) {
         static void (*getiv)(GLenum, GLint *);
         if (!getiv) getiv = (void (*)(GLenum, GLint *))dlsym(RTLD_NEXT, "glGetIntegerv");
         int dw = 0, dh = 0;
         GLint vp[4] = { 0, 0, 0, 0 };
         if (getiv) getiv(GL_VIEWPORT, vp);
         if (drawable_size(&dw, &dh)) {
-            if (!frames && verbose())
-                fprintf(stderr, "[gles-shim] first frame: viewport %dx%d+%d+%d, drawable %dx%d\n",
-                        vp[2], vp[3], vp[0], vp[1], dw, dh);
-            if ((vp[2] < dw || vp[3] < dh) && !getenv("PDK_NO_GL_SCALE")) {
+            const int resized = (dw != last_dw || dh != last_dh);
+            if (resized) {
+                if (verbose())
+                    fprintf(stderr, "[gles-shim] drawable %s: %dx%d (viewport %dx%d)\n",
+                            last_dw ? "resized" : "is", dw, dh, vp[2], vp[3]);
+                last_dw = dw;
+                last_dh = dh;
+                // The mode-to-drawable ratio moved with it, so the scissor and
+                // viewport factors have to be worked out again.
+                scale_ready = 0;
+            }
+            if ((vp[2] != dw || vp[3] != dh) && !getenv("PDK_NO_GL_SCALE")) {
                 static void (*setvp)(GLint, GLint, GLsizei, GLsizei);
                 if (!setvp)
                     setvp = (void (*)(GLint, GLint, GLsizei, GLsizei))dlsym(RTLD_NEXT, "glViewport");
                 if (setvp) {
-                    if (!frames && verbose())
-                        fprintf(stderr, "[gles-shim] widening viewport to %dx%d\n", dw, dh);
+                    if (resized && verbose())
+                        fprintf(stderr, "[gles-shim] setting viewport to %dx%d\n", dw, dh);
                     setvp(0, 0, dw, dh);
                 }
             }
         }
-        frames++;
     }
+    frames++;
 
     fn(mask);
 }

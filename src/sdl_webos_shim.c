@@ -455,13 +455,76 @@ int SDL_WebOsHookIsComponent(void)
     return 0;   // never launched as an embedded plugin here
 }
 
+// The size the game is actually drawing into, asked of SDL2 rather than assumed.
+//
+// pdk-run reads the panel from DRM, which is the *physical* mode and never
+// changes. LSM rotates by putting a QML Rotation transform around the whole
+// shell and swapping the shell's logical size, so on rotation a card is
+// reconfigured from 800x1280 to landscape - and every client, including us, is
+// simply given a different surface size. Nothing tells us the panel is now
+// "sideways", and there is no wl_output transform to read: as far as the client
+// is concerned the screen just changed shape.
+//
+// So trust the window, not the panel. Everything the shim derives from the
+// screen size - whether a mode is undersized and should go fullscreen, and how
+// touch coordinates map back into the game's space - then follows rotation for
+// free, because the window follows it.
+static int sdl2_window_size(int *w, int *h)
+{
+    static void *(*get_current_gl_window)(void);
+    static void *(*get_mouse_focus)(void);
+    static void (*get_window_size)(void *, int *, int *);
+    static int probed;
+
+    if (!probed) {
+        probed = 1;
+        void *sdl2 = dlopen("libSDL2-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
+        if (sdl2) {
+            get_current_gl_window = (void *(*)(void))dlsym(sdl2, "SDL_GL_GetCurrentWindow");
+            get_mouse_focus = (void *(*)(void))dlsym(sdl2, "SDL_GetMouseFocus");
+            get_window_size = (void (*)(void *, int *, int *))dlsym(sdl2, "SDL_GetWindowSize");
+        }
+        if (!get_window_size)
+            TRACE("no SDL2 SDL_GetWindowSize; falling back to the panel size");
+    }
+    if (!get_window_size)
+        return 0;
+
+    // GL titles have a current context; the rest are found through mouse focus.
+    void *win = get_current_gl_window ? get_current_gl_window() : NULL;
+    if (!win && get_mouse_focus)
+        win = get_mouse_focus();
+    if (!win)
+        return 0;
+
+    int ww = 0, wh = 0;
+    get_window_size(win, &ww, &wh);
+    if (ww <= 0 || wh <= 0)
+        return 0;
+
+    if (w) *w = ww;
+    if (h) *h = wh;
+    return 1;
+}
+
 int SDL_WebOsHookGetDisplayRect(int *x, int *y, int *w, int *h)
 {
+    if (x) *x = 0;
+    if (y) *y = 0;
+
+    // The live window wins once there is one. PDK_SCREEN_* stays the fallback:
+    // SDL_SetVideoMode asks for this before any window exists, and that is
+    // exactly when the panel size is the right answer.
+    int ww = 0, wh = 0;
+    if (!getenv("PDK_NO_WINDOW_SIZE") && sdl2_window_size(&ww, &wh)) {
+        if (w) *w = ww;
+        if (h) *h = wh;
+        return 0;
+    }
+
     // Reported by the PIpc host at window creation; env lets it be overridden.
     const char *ws = getenv("PDK_SCREEN_WIDTH");
     const char *hs = getenv("PDK_SCREEN_HEIGHT");
-    if (x) *x = 0;
-    if (y) *y = 0;
     if (w) *w = ws ? atoi(ws) : 1024;
     if (h) *h = hs ? atoi(hs) : 768;
     return 0;
