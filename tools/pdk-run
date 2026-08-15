@@ -69,7 +69,29 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
 export PULSE_SERVER="${PULSE_SERVER:-unix:/var/run/pulse/native}"
-export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+# Hardware GL, when a Mesa built for armel is installed beside the Debian one.
+#
+# Debian armel has no hardware driver at all: its Mesa 22.3 ships swrast plus a
+# pile of kmsro display stubs, because armel targets ARMv5 hardware that never
+# had a GPU. So llvmpipe was the only option and these titles ran at a few FPS
+# on a device whose Mali-G52 was sitting idle.
+#
+# tools/mk-mesa26.sh cross-builds Mesa 26.2 with the panfrost driver and puts it
+# in usr/lib/mesa26 - deliberately beside Debian's stack, not over it. That build
+# has no llvmpipe (LLVM is a large dependency and panfrost does not need it), and
+# a 26.2 libEGL cannot load Debian's 22.3 DRI drivers, so overwriting would leave
+# nothing to fall back to when the hardware path fails. Set PDK_SOFTWARE_GL=1 to
+# get the old behaviour.
+MESA26="$SYSROOT/usr/lib/mesa26"
+PDK_GL_LIBS=""
+if [ -z "$PDK_SOFTWARE_GL" ] && [ -d "$MESA26/lib" ]; then
+    PDK_GL_LIBS="$MESA26/lib"
+    export __EGL_VENDOR_LIBRARY_DIRS="$MESA26/egl_vendor.d"
+    [ -d "$MESA26/drirc.d" ] && export DRIRC_CONFIGDIR="$MESA26/drirc.d"
+    export LIBGL_ALWAYS_SOFTWARE=0
+else
+    export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+fi
 
 # The shim asks for fullscreen when a title hardcodes a mode smaller than the
 # panel, and sdl12-compat does the scaling. Filter it - these are 320x480-era
@@ -134,7 +156,9 @@ case "$(uname -m)" in
         # of /usr/lib/arm-linux-gnueabi/pulseaudio resolves against the host,
         # where it is either absent or aarch64, and the dlopen of SDL2 fails
         # with "Failed loading SDL2 library". Name those directories explicitly.
-        SYSLIBS="$SYSROOT/lib:$SYSROOT/usr/lib"
+        # The hardware Mesa goes first so its libEGL_mesa and libgbm win over
+        # Debian's 22.3 ones, and so glvnd finds libgallium-26.2.0.so by name.
+        SYSLIBS="${PDK_GL_LIBS:+$PDK_GL_LIBS:}$SYSROOT/lib:$SYSROOT/usr/lib"
         for d in "$SYSROOT/lib/arm-linux-gnueabi" \
                  "$SYSROOT/usr/lib/arm-linux-gnueabi" \
                  "$SYSROOT/usr/lib/arm-linux-gnueabi/pulseaudio" \
@@ -150,7 +174,10 @@ case "$(uname -m)" in
         for d in "$SYSROOT/usr/lib/arm-linux-gnueabi/dri" "$SYSROOT/usr/lib/dri"; do
             [ -d "$d" ] && export LIBGL_DRIVERS_PATH="${LIBGL_DRIVERS_PATH:+$LIBGL_DRIVERS_PATH:}$d"
         done
-        [ -d "$SYSROOT/usr/share/glvnd/egl_vendor.d" ] && \
+        # Only when the hardware stack above has not already claimed it - that one
+        # ships its own vendor json, and pointing glvnd at Debian's would load the
+        # 22.3 libEGL_mesa instead and quietly put us back on llvmpipe.
+        [ -z "$__EGL_VENDOR_LIBRARY_DIRS" ] && [ -d "$SYSROOT/usr/share/glvnd/egl_vendor.d" ] && \
             export __EGL_VENDOR_LIBRARY_DIRS="$SYSROOT/usr/share/glvnd/egl_vendor.d"
         [ -n "$PDK_PRELOAD" ] && export LD_PRELOAD="$PDK_PRELOAD"
         exec "$LOADER" --library-path "$LD_LIBRARY_PATH" "./$BINNAME" "$@"
