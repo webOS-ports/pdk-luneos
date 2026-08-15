@@ -42,12 +42,21 @@ typedef SDL_Surface *(*setvideomode_fn)(int, int, int, uint32_t);
 // defined further down; used by SDL_SetVideoMode to resolve "native resolution"
 int SDL_WebOsHookGetDisplayRect(int *x, int *y, int *w, int *h);
 
+// defined with the mouse handling further down; used by the event wrappers to put
+// event coordinates back into the game's own space
+static int scale_mouse(int *x, int *y);
+
 static int   s_orientation    = 0;
 static int   s_gestures       = 1;
 static int   s_screen_timeout = 1;
 static int   s_banner_msgs    = 1;
 static int   s_compass        = 0;
 static int   s_pause_ui       = 0;
+
+// The mode the game last asked for. Mouse coordinates arrive from sdl12-compat in
+// window pixels and have to be mapped back into this space; see scale_mouse().
+int pdkshim_mode_w;
+int pdkshim_mode_h;
 
 static void (*s_resize_cb)(int, int);
 static void (*s_activate_cb)(int);
@@ -57,6 +66,21 @@ static int verbose(void)
 {
     static int v = -1;
     if (v < 0) v = getenv("PDK_SHIM_DEBUG") ? 1 : 0;
+    return v;
+}
+
+
+// How many input lines to trace before going quiet. A game polls every frame, so
+// this has to be bounded, but 40 is not enough to catch "the button I pressed" in
+// a long session - PDK_TRACE_MAX raises it.
+static int trace_max(void)
+{
+    static int v = -1;
+    if (v < 0) {
+        const char *s = getenv("PDK_TRACE_MAX");
+        v = s ? atoi(s) : 40;
+        if (v < 0) v = 0;
+    }
     return v;
 }
 
@@ -201,6 +225,11 @@ SDL_Surface *SDL_SetVideoMode(int w, int h, int bpp, uint32_t flags)
             snprintf(buf, sizeof buf, "%d", h);
             setenv("PDK_GL_MODE_HEIGHT", buf, 1);
         }
+
+        // Also kept in-process for scale_mouse(), which needs it for every title
+        // rather than only the GL ones.
+        pdkshim_mode_w = w;
+        pdkshim_mode_h = h;
     }
     if (bpp <= 0)
         bpp = 32;
@@ -244,6 +273,12 @@ SDL_Surface *SDL_SetVideoMode(int w, int h, int bpp, uint32_t flags)
 // them for anything that genuinely wants to react.
 
 #define SDL12_VIDEORESIZE 16
+// SDL 1.2's SDL_EventType, for the input trace below.
+#define SDL12_KEYDOWN          2
+#define SDL12_KEYUP            3
+#define SDL12_MOUSEMOTION      4
+#define SDL12_MOUSEBUTTONDOWN  5
+#define SDL12_MOUSEBUTTONUP    6
 
 typedef int (*pollevent_fn)(void *);
 typedef int (*waitevent_fn)(void *);
@@ -267,6 +302,75 @@ static int is_resize(const void *ev)
     return ev && *(const unsigned char *)ev == SDL12_VIDEORESIZE;
 }
 
+// What actually reaches the game, when PDK_SHIM_DEBUG is on. Touch arriving at
+// the client (wl_touch.down in WAYLAND_DEBUG) says nothing about whether it
+// survives SDL2's synthetic-mouse step and sdl12-compat's translation, and those
+// are three different bugs in three different places. Capped so a game polling
+// every frame cannot flood the journal.
+static void trace_event(const void *ev, const char *from)
+{
+    static int seen;
+    if (!ev || seen >= trace_max()) return;
+    unsigned char type = *(const unsigned char *)ev;
+    if (type == SDL12_MOUSEMOTION || type == SDL12_MOUSEBUTTONDOWN ||
+        type == SDL12_MOUSEBUTTONUP) {
+        // Both SDL 1.2 mouse event structs put Uint16 x,y at offsets 4 and 6:
+        // three Uint8 fields, then the Uint16 pair lands on its alignment.
+        const unsigned char *b = ev;
+        unsigned x = (unsigned)b[4] | ((unsigned)b[5] << 8);
+        unsigned y = (unsigned)b[6] | ((unsigned)b[7] << 8);
+        TRACE("%s: type=%u at %u,%u", from, type, x, y);
+        seen++;
+    } else if (type == SDL12_KEYDOWN || type == SDL12_KEYUP) {
+        TRACE("%s: key event type=%u", from, type);
+        seen++;
+    }
+}
+
+// Mouse events carry the same unscaled, clamped position as the polled state, so
+// a title that reads events instead of polling gets its clicks in the wrong place
+// - which is how a game can feel responsive everywhere and still have its OK and
+// Back buttons do nothing. Rewrite the coordinates in place.
+//
+// The event's own x,y cannot be repaired (they are already clamped), so this uses
+// the pointer position SDL2 has right now. For a tap that is the position the
+// event refers to; a fast drag can be a frame stale, which is the trade for not
+// having to reimplement sdl12-compat's event translation.
+static void fix_event_coords(void *ev)
+{
+    if (!ev) return;
+    unsigned char *b = ev;
+    unsigned char type = b[0];
+    if (type != SDL12_MOUSEMOTION && type != SDL12_MOUSEBUTTONDOWN &&
+        type != SDL12_MOUSEBUTTONUP)
+        return;
+
+    int x = 0, y = 0;
+    if (!scale_mouse(&x, &y)) return;
+
+    if (type == SDL12_MOUSEMOTION) {
+        // xrel,yrel follow x,y as Sint16; scale them by the same ratio so drags
+        // move by the distance the game expects.
+        int sw = 0, sh = 0;
+        SDL_WebOsHookGetDisplayRect(NULL, NULL, &sw, &sh);
+        short xrel = (short)((unsigned)b[8] | ((unsigned)b[9] << 8));
+        short yrel = (short)((unsigned)b[10] | ((unsigned)b[11] << 8));
+        if (sw > 0 && sh > 0) {
+            xrel = (short)((long)xrel * pdkshim_mode_w / sw);
+            yrel = (short)((long)yrel * pdkshim_mode_h / sh);
+        }
+        b[8] = (unsigned char)(xrel & 0xff);
+        b[9] = (unsigned char)((xrel >> 8) & 0xff);
+        b[10] = (unsigned char)(yrel & 0xff);
+        b[11] = (unsigned char)((yrel >> 8) & 0xff);
+    }
+
+    b[4] = (unsigned char)(x & 0xff);
+    b[5] = (unsigned char)((x >> 8) & 0xff);
+    b[6] = (unsigned char)(y & 0xff);
+    b[7] = (unsigned char)((y >> 8) & 0xff);
+}
+
 int SDL_PollEvent(void *event)
 {
     static pollevent_fn real;
@@ -275,6 +379,7 @@ int SDL_PollEvent(void *event)
 
     for (;;) {
         int r = real(event);
+        if (r > 0) { fix_event_coords(event); trace_event(event, "PollEvent"); }
         if (r <= 0 || !drop_resize() || !is_resize(event))
             return r;
         TRACE("dropping SDL_VIDEORESIZE");
@@ -290,6 +395,7 @@ int SDL_WaitEvent(void *event)
 
     for (;;) {
         int r = real(event);
+        if (r > 0) { fix_event_coords(event); trace_event(event, "WaitEvent"); }
         if (r <= 0 || !drop_resize() || !is_resize(event))
             return r;
         TRACE("dropping SDL_VIDEORESIZE (wait)");
@@ -403,12 +509,95 @@ int SDL_WebOsHookRegisterPausedCallback(void (*cb)(int))
 typedef unsigned char Uint8;
 typedef Uint8 (*mousestate_fn)(int *, int *);
 
+// Mouse position, mapped back into the coordinate space the game believes in.
+//
+// A title that hardcodes 320x480 gets a fullscreen 800x1280 window, and
+// sdl12-compat hands its 1.2 surface the pointer position in *window* pixels,
+// clamped to the surface bounds. So a tap anywhere past x=320 or y=480 - which is
+// most of the panel - arrives as exactly (320,480), and the game reads every touch
+// as the bottom-right corner. This is the input half of the same problem the GLES
+// shim fixes for pixels: sdl12-compat is not scaling this title, so nothing maps.
+//
+// Ask SDL2 directly for the unclamped window position and scale it ourselves. The
+// clamped value cannot be repaired after the fact - the information is gone by the
+// time it reaches us - which is why this reaches past sdl12-compat rather than
+// adjusting what it returns.
+static int sdl2_mouse_state(int *wx, int *wy)
+{
+    static unsigned (*fn)(int *, int *);
+    static int probed;
+    if (!probed) {
+        probed = 1;
+        void *sdl2 = dlopen("libSDL2-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
+        if (sdl2) fn = (unsigned (*)(int *, int *))dlsym(sdl2, "SDL_GetMouseState");
+        if (!fn) TRACE("no SDL2 SDL_GetMouseState; mouse stays unscaled");
+    }
+    if (!fn) return -1;
+    return (int)fn(wx, wy);
+}
+
+// The mode the game asked for, recorded by SDL_SetVideoMode (see below).
+extern int pdkshim_mode_w;
+extern int pdkshim_mode_h;
+
+
+static int scale_mouse(int *x, int *y)
+{
+    int sw = 0, sh = 0;
+    if (getenv("PDK_NO_INPUT_SCALE")) return 0;
+    if (pdkshim_mode_w <= 0 || pdkshim_mode_h <= 0) return 0;
+    SDL_WebOsHookGetDisplayRect(NULL, NULL, &sw, &sh);
+    if (sw <= 0 || sh <= 0) return 0;
+    if (sw == pdkshim_mode_w && sh == pdkshim_mode_h) return 0;  // nothing to map
+
+    int wx = 0, wy = 0;
+    if (sdl2_mouse_state(&wx, &wy) < 0) return 0;
+
+    int mw = pdkshim_mode_w, mh = pdkshim_mode_h;
+    int lx = (int)((long)wx * mw / sw);
+    int ly = (int)((long)wy * mh / sh);
+
+
+    if (x) *x = lx < 0 ? 0 : (lx > mw - 1 ? mw - 1 : lx);
+    if (y) *y = ly < 0 ? 0 : (ly > mh - 1 ? mh - 1 : ly);
+    return 1;
+}
+
+Uint8 SDL_GetMouseState(int *x, int *y)
+{
+    static mousestate_fn real;
+    if (!real) real = (mousestate_fn)dlsym(RTLD_NEXT, "SDL_GetMouseState");
+    if (!real) { if (x) *x = 0; if (y) *y = 0; return 0; }
+    Uint8 r = real(x, y);
+    int scaled = scale_mouse(x, y);
+    if (verbose()) {
+        static int seen;
+        static int lx = -1, ly = -1;
+        int cx = x ? *x : -1, cy = y ? *y : -1;
+        if (seen < trace_max() && (r || cx != lx || cy != ly)) {
+            TRACE("GetMouseState -> %d,%d buttons=0x%x%s", cx, cy, (unsigned)r,
+                  scaled ? " (scaled)" : "");
+            lx = cx; ly = cy; seen++;
+        }
+    }
+    return r;
+}
+
 Uint8 SDL_GetMultiMouseState(int index, int *x, int *y)
 {
     static mousestate_fn real;
     if (!real) real = (mousestate_fn)dlsym(RTLD_NEXT, "SDL_GetMouseState");
     if (index != 0 || !real) { if (x) *x = 0; if (y) *y = 0; return 0; }
-    return real(x, y);
+    Uint8 r = real(x, y);
+    if (verbose()) {
+        static int seen;
+        if (seen < 20) {
+            TRACE("GetMultiMouseState(%d) -> %d,%d buttons=0x%x",
+                  index, x ? *x : -1, y ? *y : -1, (unsigned)r);
+            seen++;
+        }
+    }
+    return r;
 }
 
 Uint8 SDL_GetRelativeMultiMouseState(int index, int *x, int *y)

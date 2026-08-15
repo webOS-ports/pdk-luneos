@@ -172,16 +172,32 @@ void glScissor(GLint x, GLint y, GLsizei w, GLsizei h)
     // screen, not its size, so it cannot stand in for the mode the way a viewport
     // can. This is the wrapper that matters for titles which never set a viewport.
     if (!fbo_bound() && (scale_ready ? scale_ready == 1 : (resolve_scale(0, 0), scale_ready == 1))) {
-        GLint nx = (GLint)(x * gl_sx), ny = (GLint)(y * gl_sy);
-        GLsizei nw = (GLsizei)(w * gl_sx), nh = (GLsizei)(h * gl_sy);
+        int mw = env_int("PDK_GL_MODE_WIDTH"), mh = env_int("PDK_GL_MODE_HEIGHT");
+
+        // Only rectangles expressed in the game's own coordinate space get scaled.
+        // A title that computes its scissor from glGetIntegerv(GL_VIEWPORT) - and
+        // the viewport already covers the whole panel - hands us window-space
+        // numbers, and scaling those again pushes whatever it was clipping to
+        // clean off the screen. That looks like missing menus rather than a
+        // clipping bug, so it is worth being conservative here: anything that does
+        // not fit inside the mode is assumed to be window space already.
+        int in_mode_space = (mw <= 0 || mh <= 0) ||
+                            ((long)x + w <= mw && (long)y + h <= mh);
+
         if (verbose()) {
-            static int once;
-            if (!once++)
-                fprintf(stderr, "[gles-shim] glScissor(%d,%d,%d,%d) -> (%d,%d,%d,%d)\n",
-                        x, y, w, h, nx, ny, nw, nh);
+            static int seen;
+            if (seen < 20) {
+                fprintf(stderr, "[gles-shim] glScissor(%d,%d,%d,%d) %s\n", x, y, w, h,
+                        in_mode_space ? "-> scaled" : "-> passed through (window space)");
+                seen++;
+            }
         }
-        fn(nx, ny, nw, nh);
-        return;
+
+        if (in_mode_space) {
+            fn((GLint)(x * gl_sx), (GLint)(y * gl_sy),
+               (GLsizei)(w * gl_sx), (GLsizei)(h * gl_sy));
+            return;
+        }
     }
     fn(x, y, w, h);
 }
