@@ -19,6 +19,7 @@
 #define SDL_OPENGL       0x00000002
 #define SDL_OPENGLES     0x00000040   // Palm addition
 #define SDL_OPENGLESBLIT 0x00000048   // Palm addition (implies OPENGLES)
+#define SDL_FULLSCREEN   0x80000000
 
 // Public SDL 1.2 surface head. sdl12-compat keeps this layout for ABI reasons, so
 // the first fields can be read and adjusted safely.
@@ -166,6 +167,39 @@ SDL_Surface *SDL_SetVideoMode(int w, int h, int bpp, uint32_t flags)
             TRACE("SetVideoMode: clamping oversized %dx%d -> %dx%d", w, h, sw, sh);
             w = sw;
             h = sh;
+        }
+
+        // And the opposite case: a title that hardcodes a Palm-era mode (Monopoly
+        // asks for its own size, not 0x0) gets a window of exactly that size, which
+        // on a 800x1280 panel is a small rectangle in the corner. Palm never had to
+        // deal with this - the mode always matched the device.
+        //
+        // Ask for fullscreen rather than stretching the mode itself: sdl12-compat
+        // then keeps the 1.2 surface at the size the game asked for and scales it to
+        // the output, preserving aspect ratio, which is what these fixed-layout
+        // titles need. Growing w/h instead would hand the game a bigger surface than
+        // its artwork and UI hit-boxes were built for.
+        //
+        // Only for windowed modes that are genuinely smaller than the panel, so a
+        // title that already matches the display is untouched.
+        if (!getenv("PDK_NO_UPSCALE") && !(flags & SDL_FULLSCREEN)
+            && sw > 0 && sh > 0 && w > 0 && h > 0 && (w < sw || h < sh)) {
+            TRACE("SetVideoMode: upscaling %dx%d to fill %dx%d (fullscreen)",
+                  w, h, sw, sh);
+            flags |= SDL_FULLSCREEN;
+        }
+
+        // Tell the GLES shim what the game thinks its screen is. A GL title draws
+        // into the window through its own context, so sdl12-compat's surface
+        // scaling never touches it and libGLES_CM.so has to scale the viewport
+        // instead - which it cannot do without knowing this size. Same process,
+        // so the environment is the whole channel.
+        if (flags & SDL_OPENGL) {
+            char buf[16];
+            snprintf(buf, sizeof buf, "%d", w);
+            setenv("PDK_GL_MODE_WIDTH", buf, 1);
+            snprintf(buf, sizeof buf, "%d", h);
+            setenv("PDK_GL_MODE_HEIGHT", buf, 1);
         }
     }
     if (bpp <= 0)

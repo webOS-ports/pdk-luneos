@@ -32,6 +32,30 @@ if [ "$BINDIR" != "." ]; then cd "$APPDIR/$BINDIR" || exit 1; else cd "$APPDIR" 
 
 # Screen size. Most titles ask for 0x0 ("native") and the SDL shim resolves it;
 # a few insist on their own. Override per app with PDK_SCREEN_* in the environment.
+#
+# Ask DRM for the panel's mode rather than assuming the TouchPad's 1024x768. That
+# default is wrong on every other device - a PineTab2 is 800x1280 - and it is not
+# only cosmetic: the shim scales undersized modes up to this figure, so getting it
+# wrong leaves the game rendering to a rectangle the display does not have.
+if [ -z "$PDK_SCREEN_WIDTH" ] || [ -z "$PDK_SCREEN_HEIGHT" ]; then
+    for status in /sys/class/drm/*/status; do
+        [ -r "$status" ] || continue
+        read -r state < "$status" 2>/dev/null || continue
+        [ "$state" = "connected" ] || continue
+        read -r mode < "${status%/status}/modes" 2>/dev/null || continue
+        # modes look like 800x1280, sometimes with a trailing flag (1920x1080i)
+        mw=${mode%%x*}
+        mh=${mode#*x}
+        mh=${mh%%[!0-9]*}
+        case "$mw$mh" in
+            *[!0-9]* | "") continue ;;
+        esac
+        [ "$mw" -gt 0 ] && [ "$mh" -gt 0 ] || continue
+        : "${PDK_SCREEN_WIDTH:=$mw}"
+        : "${PDK_SCREEN_HEIGHT:=$mh}"
+        break
+    done
+fi
 : "${PDK_SCREEN_WIDTH:=1024}"
 : "${PDK_SCREEN_HEIGHT:=768}"
 
@@ -46,6 +70,14 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
 export PULSE_SERVER="${PULSE_SERVER:-unix:/var/run/pulse/native}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+
+# The shim asks for fullscreen when a title hardcodes a mode smaller than the
+# panel, and sdl12-compat does the scaling. Filter it - these are 320x480-era
+# assets on a much larger screen, where nearest-neighbour is visibly blocky.
+# OPENGL_SCALING covers the same path for GL titles, which render to an FBO.
+export SDL12COMPAT_SCALE_METHOD="${SDL12COMPAT_SCALE_METHOD:-linear}"
+export SDL12COMPAT_OPENGL_SCALING="${SDL12COMPAT_OPENGL_SCALING:-1}"
+
 export LP_NUM_THREADS PDK_SCREEN_WIDTH PDK_SCREEN_HEIGHT
 
 if [ -n "$PDK_DEBUG" ]; then
