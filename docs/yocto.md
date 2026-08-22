@@ -4,7 +4,9 @@ The `yocto/` directory in this repository is a complete BitBake layer
 (`meta-pdk`). Adding it to a LuneOS build produces `/opt/pdk` in the image —
 sysroot, shims and launcher — instead of hand-copying files to a device.
 
-> **Status: builds.** Verified against a real LuneOS scarthgap tree,
+> **Status: builds.** Originally verified on a LuneOS scarthgap tree; LuneOS
+> has since moved to **wrynose**, which is now the target. Figures below were
+> measured on scarthgap unless noted. Verified against a real tree,
 > `MACHINE=tissot-halium`:
 >
 > * `bitbake -n luneos-image` — exit 0, no errors, 14612 tasks planned
@@ -161,8 +163,8 @@ Use mode 2 to reproduce known-good behaviour; use mode 1 for something shippable
 
 Stating these plainly, because two of them will bite on the first build:
 
-**1. luna-surfacemanager needs the `xdg_wm_base` patch.** oe-core scarthgap ships
-SDL2 2.30.1, which has no `wl_shell` backend, and the stock compositor advertises
+**1. luna-surfacemanager needs the `xdg_wm_base` patch.** oe-core ships
+SDL2 2.30.1 or newer, which has no `wl_shell` backend, and the stock compositor advertises
 only `wl_shell` and `wl_webos_shell`. Without the patch a game builds and runs
 but never gets a window.
 
@@ -208,6 +210,15 @@ the layer tries to deduplicate against the host userland, and it could not: the
 ABIs differ.
 
 ## Where the recipes live
+
+> **wrynose and scarthgap have diverged.** The copy in a LuneOS wrynose tree
+> carries adaptations this repository's does not — `INHERIT_DISTRO:remove =
+> "create-spdx"`, a `do_install:append()` scrubbing `RECIPE_SYSROOT` out of the
+> installed `.pc` files, and no `S = "${WORKDIR}/git"` because wrynose OE splits
+> `UNPACKDIR` from `S` natively. This repository still carries
+> `UNPACKDIR ??= "${WORKDIR}"` as a scarthgap backport, which on wrynose would
+> shadow the real variable. **Do not sync the two wholesale in either direction** —
+> diff and move individual changes.
 
 Two copies, deliberately:
 
