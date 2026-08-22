@@ -77,6 +77,8 @@ extern unsigned int eglQuerySurface(void *dpy, void *surf, int attr, int *value)
 // letterbox offsets would be geometrically prettier and would clip the wrong pixels.
 static int scale_ready;      // 0 not yet resolved, 1 scaling, -1 disabled
 static double gl_sx = 1.0, gl_sy = 1.0;
+// Letterbox offsets, in drawable pixels, that centre the scaled image.
+static double gl_ox = 0.0, gl_oy = 0.0;
 
 static int env_int(const char *name)
 {
@@ -126,12 +128,29 @@ static void resolve_scale(int vw, int vh)
 
     if (dw <= mw && dh <= mh) return;   // nothing to gain
 
-    gl_sx = (double)dw / (double)mw;
-    gl_sy = (double)dh / (double)mh;
+    // One scale for both axes, not dw/mw and dh/mh separately. These titles have
+    // a fixed 4:3 or 2:3 layout; stretching each axis to fill the panel distorts
+    // everything on it. On a 1080x2220 phone a 320x480 title came out at
+    // 3.375 x 4.625 - visibly wrong. Take the smaller factor and centre what is
+    // left over, so the aspect ratio survives and the remainder is letterboxed.
+    // PDK_GL_STRETCH=1 restores the fill-the-panel behaviour.
+    double sx = (double)dw / (double)mw;
+    double sy = (double)dh / (double)mh;
+
+    if (getenv("PDK_GL_STRETCH")) {
+        gl_sx = sx; gl_sy = sy;
+        gl_ox = gl_oy = 0.0;
+    } else {
+        double s = (sx < sy) ? sx : sy;
+        gl_sx = gl_sy = s;
+        gl_ox = ((double)dw - (double)mw * s) / 2.0;
+        gl_oy = ((double)dh - (double)mh * s) / 2.0;
+    }
     scale_ready = 1;
 
     if (verbose())
-        fprintf(stderr, "[gles-shim] scaling GL rects by %.3f x %.3f\n", gl_sx, gl_sy);
+        fprintf(stderr, "[gles-shim] scaling GL rects by %.3f x %.3f, offset %.0f,%.0f\n",
+                gl_sx, gl_sy, gl_ox, gl_oy);
 }
 
 static int scaling_active(int w, int h)
@@ -148,7 +167,7 @@ void glViewport(GLint x, GLint y, GLsizei w, GLsizei h)
     if (!fn) return;
 
     if (scaling_active(w, h)) {
-        GLint nx = (GLint)(x * gl_sx), ny = (GLint)(y * gl_sy);
+        GLint nx = (GLint)(gl_ox + x * gl_sx), ny = (GLint)(gl_oy + y * gl_sy);
         GLsizei nw = (GLsizei)(w * gl_sx), nh = (GLsizei)(h * gl_sy);
         if (verbose())
             fprintf(stderr, "[gles-shim] glViewport(%d,%d,%d,%d) -> (%d,%d,%d,%d)\n",
@@ -194,7 +213,7 @@ void glScissor(GLint x, GLint y, GLsizei w, GLsizei h)
         }
 
         if (in_mode_space) {
-            fn((GLint)(x * gl_sx), (GLint)(y * gl_sy),
+            fn((GLint)(gl_ox + x * gl_sx), (GLint)(gl_oy + y * gl_sy),
                (GLsizei)(w * gl_sx), (GLsizei)(h * gl_sy));
             return;
         }

@@ -136,8 +136,21 @@ find_qemu() {
     return 1
 }
 
+# aarch64 is opt-in (PDK_NATIVE=1), not automatic. AArch32 support is necessary
+# but not sufficient: on sargo (halium 4.9) the loader runs, and so does a modern
+# sysroot binary like curl, yet a 2010 PDK game dies with "invalid copy" before
+# reaching any of our code - while the same binary runs fine under qemu. PineTab2
+# (6.6) does execute them natively. Nothing cheap distinguishes the two, and
+# guessing wrong costs every game on the device, so default to the path that
+# always works and let a known-good device ask for the faster one.
+NATIVE_OK=no
 case "$(uname -m)" in
-  armv7*|armv8l|aarch64)
+  armv7*|armv8l) NATIVE_OK=yes ;;
+  aarch64) [ -n "$PDK_NATIVE" ] && NATIVE_OK=yes ;;
+esac
+
+case "$NATIVE_OK" in
+  yes)
     # head -n 1, not head -1: this runs on the target, where head is busybox's
     # and rejects the obsolete form. Only the ARM branch ever reaches it, so it
     # went unnoticed until this ran on a device.
@@ -145,9 +158,26 @@ case "$(uname -m)" in
     # On aarch64 the loader is a 32-bit binary, so running it at all is the
     # test for AArch32 support: without CONFIG_COMPAT execve() returns ENOEXEC
     # and this fails, leaving us on the qemu path below.
-    if [ -n "$LOADER" ] && ! "$LOADER" --version >/dev/null 2>&1; then
-        echo "pdk-run: $(uname -m) kernel has no AArch32 support, using emulation" >&2
-        LOADER=
+    # Probing with "$LOADER --version" is not enough. On a halium aarch64 kernel
+    # the loader itself runs happily - CONFIG_COMPAT is on - but loading a real
+    # 32-bit application then dies with "invalid copy" before any of our code is
+    # reached. Probe by running an actual executable from the sysroot instead;
+    # if that fails, fall through to qemu, which works there.
+    if [ -n "$LOADER" ]; then
+        PROBE=
+        for c in "$SYSROOT/usr/bin/curl" "$SYSROOT/bin/sh" "$SYSROOT/usr/bin/flac"; do
+            [ -x "$c" ] && { PROBE=$c; break; }
+        done
+        if [ -n "$PROBE" ]; then
+            "$LOADER" --library-path "$SYSROOT/lib:$SYSROOT/usr/lib" \
+                      "$PROBE" --version >/dev/null 2>&1 || {
+                echo "pdk-run: $(uname -m) cannot run 32-bit binaries natively, using emulation" >&2
+                LOADER=
+            }
+        elif ! "$LOADER" --version >/dev/null 2>&1; then
+            echo "pdk-run: $(uname -m) kernel has no AArch32 support, using emulation" >&2
+            LOADER=
+        fi
     fi
     if [ -n "$LOADER" ]; then
         # qemu-user is given -L "$SYSROOT" and so treats it as /, which quietly
