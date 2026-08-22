@@ -507,6 +507,37 @@ static int sdl2_window_size(int *w, int *h)
     return 1;
 }
 
+// The panel size, before any window exists. SDL_GetWindowSize needs a window;
+// this does not, which is exactly the SetVideoMode case - the game asks how big
+// the screen is in order to decide what mode to request.
+static int sdl2_display_size(int *w, int *h)
+{
+    // Matches SDL 2's SDL_DisplayMode. Only w/h are read.
+    struct sdl2_mode { unsigned format; int w; int h; int refresh; void *driverdata; };
+    static int (*get_desktop_mode)(int, struct sdl2_mode *);
+    static int probed;
+
+    if (!probed) {
+        probed = 1;
+        void *sdl2 = dlopen("libSDL2-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
+        if (sdl2)
+            get_desktop_mode = (int (*)(int, struct sdl2_mode *))
+                               dlsym(sdl2, "SDL_GetDesktopDisplayMode");
+        if (!get_desktop_mode)
+            TRACE("no SDL2 SDL_GetDesktopDisplayMode; falling back to 1024x768");
+    }
+    if (!get_desktop_mode)
+        return 0;
+
+    struct sdl2_mode m = {0, 0, 0, 0, NULL};
+    if (get_desktop_mode(0, &m) != 0 || m.w <= 0 || m.h <= 0)
+        return 0;
+
+    if (w) *w = m.w;
+    if (h) *h = m.h;
+    return 1;
+}
+
 int SDL_WebOsHookGetDisplayRect(int *x, int *y, int *w, int *h)
 {
     if (x) *x = 0;
@@ -522,9 +553,28 @@ int SDL_WebOsHookGetDisplayRect(int *x, int *y, int *w, int *h)
         return 0;
     }
 
-    // Reported by the PIpc host at window creation; env lets it be overridden.
+    // An explicit override wins next - some titles need a specific size and
+    // ship one in their pdk.env.
     const char *ws = getenv("PDK_SCREEN_WIDTH");
     const char *hs = getenv("PDK_SCREEN_HEIGHT");
+    if (ws && hs) {
+        if (w) *w = atoi(ws);
+        if (h) *h = atoi(hs);
+        return 0;
+    }
+
+    // Otherwise ask SDL2 for the real panel. Defaulting to 1024x768 here was
+    // wrong on any device that is not a TouchPad: on a 1080x2220 phone a
+    // 320x480 title was upscaled to fill "1024x768" and then landed in a
+    // fullscreen surface more than twice that tall, so it did not fit the
+    // screen at all.
+    int dw = 0, dh = 0;
+    if (sdl2_display_size(&dw, &dh)) {
+        if (w) *w = dw;
+        if (h) *h = dh;
+        return 0;
+    }
+
     if (w) *w = ws ? atoi(ws) : 1024;
     if (h) *h = hs ? atoi(hs) : 768;
     return 0;
