@@ -160,6 +160,23 @@ static const char *app_dir(void)
     if (s_apppath[0]) return s_apppath;
 
     char exe[PATH_MAX];
+    // pdk-run knows the application directory and exports it. Prefer that:
+    // /proc/self/exe is only the game when qemu-user fakes it or the binary was
+    // exec'd directly. Running natively through the sysroot's loader - which is
+    // how arm64 devices avoid emulation - makes it point at ld-linux.so.3, and
+    // walking up from there finds no appinfo.json at all, so every title came up
+    // as appId=unknown.
+    const char *envdir = getenv("PDK_APP_DIR");
+    if (envdir && *envdir) {
+        char probe[PATH_MAX];
+        snprintf(probe, sizeof(probe), "%s/appinfo.json", envdir);
+        struct stat st;
+        if (stat(probe, &st) == 0) {
+            snprintf(s_apppath, sizeof(s_apppath), "%s", envdir);
+            return s_apppath;
+        }
+    }
+
     ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
     if (n <= 0) return NULL;
     exe[n] = '\0';

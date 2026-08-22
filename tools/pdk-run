@@ -89,6 +89,20 @@ if [ -z "$PDK_SOFTWARE_GL" ] && [ -d "$MESA26/lib" ]; then
     export __EGL_VENDOR_LIBRARY_DIRS="$MESA26/egl_vendor.d"
     [ -d "$MESA26/drirc.d" ] && export DRIRC_CONFIGDIR="$MESA26/drirc.d"
     export LIBGL_ALWAYS_SOFTWARE=0
+elif [ -z "$PDK_SOFTWARE_GL" ] && [ -n "$(echo /dev/dri/renderD*)" ] \
+     && [ -e "$(echo /dev/dri/renderD* | cut -d" " -f1)" ] \
+     && { ls "$SYSROOT"/usr/lib/libgallium-*.so >/dev/null 2>&1 \
+          || ls "$SYSROOT"/usr/lib/dri/*_dri.so >/dev/null 2>&1; }; then
+    # The Yocto sysroot keeps Mesa in the normal place rather than a private
+    # mesa26 tree, so the branch above never fires for it - and forcing
+    # LIBGL_ALWAYS_SOFTWARE=1 here meant a device with a perfectly good GPU
+    # rendered in llvmpipe. sargo is msm_drm/Adreno 615 with freedreno built
+    # into the guest Mesa and /dev/dri/renderD128 present.
+    #
+    # Do not force hardware either: just stop forcing software and let Mesa pick,
+    # so it falls back to llvmpipe by itself where there is no usable driver
+    # (the emulator's vmwgfx, for which armel Mesa has no gallium driver).
+    export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-0}"
 else
     export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 fi
@@ -99,6 +113,11 @@ fi
 # OPENGL_SCALING covers the same path for GL titles, which render to an FBO.
 export SDL12COMPAT_SCALE_METHOD="${SDL12COMPAT_SCALE_METHOD:-linear}"
 export SDL12COMPAT_OPENGL_SCALING="${SDL12COMPAT_OPENGL_SCALING:-1}"
+
+# libpdl reads this to find appinfo.json. Do not make it infer the app
+# directory from /proc/self/exe: running natively through the sysroot loader
+# that is ld-linux.so.3, and every title then reports appId=unknown.
+export PDK_APP_DIR="$APPDIR"
 
 export LP_NUM_THREADS PDK_SCREEN_WIDTH PDK_SCREEN_HEIGHT
 
@@ -146,7 +165,16 @@ find_qemu() {
 NATIVE_OK=no
 case "$(uname -m)" in
   armv7*|armv8l) NATIVE_OK=yes ;;
-  aarch64) [ -n "$PDK_NATIVE" ] && NATIVE_OK=yes ;;
+  # arm64 runs these natively when the kernel has CONFIG_COMPAT, and that is
+  # worth having: under qemu-user the GPU is unreachable, because Mesa's
+  # freedreno driver needs msm DRM ioctls that qemu does not translate, so
+  # everything falls back to llvmpipe at a few frames a second. Native is also
+  # where hardware GL becomes possible at all.
+  #
+  # Not every title survives it - BubbleBash trips its own anti-piracy check and
+  # Lets Golf segfaults - so PDK_QEMU=1 forces emulation for those, per app
+  # via pdk.env.
+  aarch64) [ -z "$PDK_QEMU" ] && NATIVE_OK=yes ;;
 esac
 
 case "$NATIVE_OK" in
